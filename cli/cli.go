@@ -1,0 +1,31 @@
+package cli
+
+import (
+	"fmt"
+)
+
+var cliMap = map[string]DockerCli{}
+
+type DockerCli interface {
+	Exec(args ...string) error
+}
+
+type cliManager struct {
+}
+
+func NewCliManager() *cliManager {
+	return &cliManager{}
+}
+
+func (*cliManager) Run(args []string) error {
+	cmd := args[0]
+	cli, ok := cliMap[cmd]
+	if !ok {
+		return fmt.Errorf("命令[%s]找不到", cmd)
+	}
+	return cli.Exec(args[1:]...)
+}
+
+func registerCli(cmd string, cli DockerCli) {
+	cliMap[cmd] = cli
+}
