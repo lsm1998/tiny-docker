@@ -108,6 +108,13 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	if opts.Detach {
 		cmd.SysProcAttr.Setpgid = true
 		cmd.Stdin = nil
+		logPath := filepath.Join(containerDir, "container.log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			return fmt.Errorf("open log file: %w", err)
+		}
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
 	}
 
 	if err := cmd.Start(); err != nil {
