@@ -11,6 +11,9 @@
             "mode": "auto",
             "program": "${workspaceFolder}",
             "cwd": "${workspaceFolder}", 
+            "args": ["images"],
+            "asRoot": true,
+            "console": "integratedTerminal" 
         }
     ]
 }
