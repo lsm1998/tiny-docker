@@ -5,15 +5,74 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "tiny-docker",
+            "name": "help",
             "type": "go",
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}",
-            "cwd": "${workspaceFolder}", 
-            "args": ["?"],
-            // "asRoot": true,
-            "console": "integratedTerminal" 
-        }
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "help"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pull",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "pull",
+                "nginx"
+            ],
+            "asRoot": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "images",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "images"
+            ],
+            "asRoot": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "run",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "run",
+                "nginx",
+                "-d",
+                "-p",
+                "8080:80"
+            ],
+            "asRoot": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "ps",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "ps",
+                "-a"
+            ],
+            "asRoot": true,
+            "console": "integratedTerminal"
+        },
     ]
 }

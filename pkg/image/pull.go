@@ -38,6 +38,14 @@ var acceptedManifestTypes = []string{
 	"application/json",
 }
 
+// 国内加速镜像站点
+var mirrors = []string{
+	"docker.m.daocloud.io",
+	"dockerproxy.com",
+	"hub-mirror.c.163.com",
+	"mirror.baidubce.com",
+}
+
 type imageReference struct {
 	Original   string
 	Registry   string
@@ -60,7 +68,7 @@ type descriptor struct {
 		Architecture string `json:"architecture"`
 		OS           string `json:"os"`
 		Variant      string `json:"variant,omitempty"`
-	} `json:"platform,omitempty"`
+	} `json:"platform"`
 }
 
 type imageManifest struct {
@@ -127,6 +135,17 @@ type storedLayer struct {
 	Size    int64  `json:"size"`
 }
 
+func buildRegistryHosts(original string) []string {
+	hosts := make([]string, 0, len(mirrors)+1)
+	for _, m := range mirrors {
+		if m != original {
+			hosts = append(hosts, m)
+		}
+	}
+	hosts = append(hosts, original)
+	return hosts
+}
+
 func Pull(rawRef string) error {
 	ref, err := parseImageReference(rawRef)
 	if err != nil {
@@ -136,6 +155,20 @@ func Pull(rawRef string) error {
 		return err
 	}
 
+	storeRegistry := ref.Registry
+	var lastErr error
+	for _, host := range buildRegistryHosts(storeRegistry) {
+		ref.Registry = host
+		if err := pullRef(ref, storeRegistry); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+func pullRef(ref imageReference, storeRegistry string) error {
 	client := newRegistryClient(ref.Registry)
 	manifest, err := client.fetchResolvedManifest(ref)
 	if err != nil {
@@ -167,7 +200,7 @@ func Pull(rawRef string) error {
 
 	image := storedImage{
 		Name:           normalizedImageName(ref),
-		Registry:       ref.Registry,
+		Registry:       storeRegistry,
 		Repository:     ref.Repository,
 		Reference:      ref.Reference,
 		ManifestDigest: manifest.Digest,

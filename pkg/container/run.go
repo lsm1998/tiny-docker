@@ -3,6 +3,7 @@ package container
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,9 +11,20 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"tinydocker/pkg/image"
 )
+
+type Config struct {
+	ID        string `json:"id"`
+	ImageName string `json:"image_name"`
+	Command   string `json:"command"`
+	CreatedAt string `json:"created_at"`
+	Status    string `json:"status"`
+	ExitCode  int    `json:"exit_code"`
+	Pid       int    `json:"pid"`
+}
 
 // Run 启动容器
 func Run(rawRef string, cmdArgs []string) error {
@@ -21,7 +33,7 @@ func Run(rawRef string, cmdArgs []string) error {
 		return err
 	}
 
-	containerID, err := randomHex(32)
+	containerID, err := randomHex(16)
 	if err != nil {
 		return fmt.Errorf("generate container id: %w", err)
 	}
@@ -36,7 +48,6 @@ func Run(rawRef string, cmdArgs []string) error {
 			return fmt.Errorf("create container dirs: %w", err)
 		}
 	}
-	defer os.RemoveAll(containerDir)
 
 	lowerDirs := make([]string, len(img.Layers))
 	for i, l := range img.Layers {
@@ -46,16 +57,32 @@ func Run(rawRef string, cmdArgs []string) error {
 		strings.Join(lowerDirs, ":"), upperDir, workDir)
 
 	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, opts); err != nil {
+		os.RemoveAll(containerDir)
 		return fmt.Errorf("mount overlay: %w", err)
 	}
 	defer syscall.Unmount(mergedDir, syscall.MNT_DETACH)
 
 	entrypointAndCmd := buildCommand(img.Entrypoint, img.Cmd, cmdArgs)
 	if len(entrypointAndCmd) == 0 {
+		os.RemoveAll(containerDir)
 		return fmt.Errorf("image %q has no entrypoint or cmd", img.Name)
 	}
 
-	cmd := exec.Command(entrypointAndCmd[0], entrypointAndCmd[1:]...)
+	bin := resolveExecutable(mergedDir, entrypointAndCmd[0])
+
+	cfg := Config{
+		ID:        containerID,
+		ImageName: img.Name,
+		Command:   strings.Join(entrypointAndCmd, " "),
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Status:    "running",
+	}
+	if err := writeConfig(containerDir, cfg); err != nil {
+		os.RemoveAll(containerDir)
+		return fmt.Errorf("write container config: %w", err)
+	}
+
+	cmd := exec.Command(bin, entrypointAndCmd[1:]...)
 	cmd.Dir = img.WorkingDir
 	if cmd.Dir == "" {
 		cmd.Dir = "/"
@@ -76,8 +103,14 @@ func Run(rawRef string, cmdArgs []string) error {
 
 	if err := cmd.Start(); err != nil {
 		signal.Stop(sigCh)
+		cfg.Status = "exited"
+		cfg.ExitCode = -1
+		writeConfig(containerDir, cfg)
 		return fmt.Errorf("start container: %w", err)
 	}
+
+	cfg.Pid = cmd.Process.Pid
+	writeConfig(containerDir, cfg)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- cmd.Wait() }()
@@ -85,6 +118,9 @@ func Run(rawRef string, cmdArgs []string) error {
 	select {
 	case err := <-errCh:
 		signal.Stop(sigCh)
+		cfg.Status = "exited"
+		cfg.ExitCode = exitCode(err)
+		writeConfig(containerDir, cfg)
 		if err != nil {
 			return fmt.Errorf("container: %w", err)
 		}
@@ -94,9 +130,22 @@ func Run(rawRef string, cmdArgs []string) error {
 		if err := cmd.Process.Signal(sig); err != nil {
 			cmd.Process.Kill()
 		}
-		<-errCh
+		err := <-errCh
+		cfg.Status = "exited"
+		cfg.ExitCode = exitCode(err)
+		writeConfig(containerDir, cfg)
 		return nil
 	}
+}
+
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if ee, ok := err.(*exec.ExitError); ok {
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 // buildCommand 构建命令
@@ -115,6 +164,44 @@ func buildCommand(entrypoint, cmd, args []string) []string {
 		return result
 	}
 	return append([]string{}, cmd...)
+}
+
+// resolveExecutable 解析可执行文件
+func resolveExecutable(rootfs, name string) string {
+	if strings.Contains(name, "/") {
+		return name
+	}
+	for _, dir := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"} {
+		if _, err := os.Stat(filepath.Join(rootfs, dir, name)); err == nil {
+			return dir + "/" + name
+		}
+	}
+	return "/bin/" + name
+}
+
+func configPath(containerDir string) string {
+	return filepath.Join(containerDir, "config.json")
+}
+
+func writeConfig(containerDir string, cfg Config) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configPath(containerDir), data, 0o644)
+}
+
+// ReadConfig reads a container's config.json from its directory.
+func ReadConfig(containerDir string) (Config, error) {
+	data, err := os.ReadFile(filepath.Join(containerDir, "config.json"))
+	if err != nil {
+		return Config{}, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
 }
 
 func randomHex(size int) (string, error) {
