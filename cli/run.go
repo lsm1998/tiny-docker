@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+
+	"tinydocker/pkg/container"
 )
 
 func init() {
@@ -12,10 +14,10 @@ type RunCli struct {
 }
 
 func (*RunCli) Exec(args ...string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: tinydocker run <image>")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: tinydocker run <image> [command...]")
 	}
-	return nil
+	return container.Run(args[0], args[1:])
 }
 
 func (*RunCli) Description() string {

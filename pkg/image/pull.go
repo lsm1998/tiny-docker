@@ -631,7 +631,7 @@ func unpackLayer(blobPath, compressedDigest string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	tempDir := filepath.Join(overlayRoot(), "."+cacheID+".tmp")
+	tempDir := filepath.Join(OverlayRoot(), "."+cacheID+".tmp")
 	diffDir := filepath.Join(tempDir, "diff")
 	if err := os.MkdirAll(diffDir, 0o755); err != nil {
 		return "", "", err
@@ -654,7 +654,7 @@ func unpackLayer(blobPath, compressedDigest string) (string, string, error) {
 		return "", "", err
 	}
 
-	finalDir := filepath.Join(overlayRoot(), cacheID)
+	finalDir := filepath.Join(OverlayRoot(), cacheID)
 	if err := os.Rename(tempDir, finalDir); err != nil {
 		_ = os.RemoveAll(tempDir)
 		return "", "", err
@@ -824,13 +824,13 @@ func writeDiffIDMapping(digest, diffID string) error {
 
 func ensurePullLayout() error {
 	for _, dir := range []string{
-		dataRoot(),
-		filepath.Join(dataRoot(), "image", storageDriver, "imagedb", "content", "sha256"),
-		filepath.Join(dataRoot(), "image", storageDriver, "distribution", "diffid-by-digest", "sha256"),
-		filepath.Join(dataRoot(), "image", storageDriver, "distribution", "manifests", "sha256"),
-		filepath.Join(dataRoot(), "image", storageDriver, "blobs", "sha256"),
-		filepath.Join(dataRoot(), "image", storageDriver, "layerdb", "sha256"),
-		filepath.Join(dataRoot(), storageDriver),
+		DataRoot(),
+		filepath.Join(DataRoot(), "image", storageDriver, "imagedb", "content", "sha256"),
+		filepath.Join(DataRoot(), "image", storageDriver, "distribution", "diffid-by-digest", "sha256"),
+		filepath.Join(DataRoot(), "image", storageDriver, "distribution", "manifests", "sha256"),
+		filepath.Join(DataRoot(), "image", storageDriver, "blobs", "sha256"),
+		filepath.Join(DataRoot(), "image", storageDriver, "layerdb", "sha256"),
+		filepath.Join(DataRoot(), storageDriver),
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -839,7 +839,7 @@ func ensurePullLayout() error {
 	return nil
 }
 
-func dataRoot() string {
+func DataRoot() string {
 	if root := strings.TrimSpace(os.Getenv("TINYDOCKER_HOME")); root != "" {
 		return filepath.Clean(root)
 	}
@@ -847,31 +847,31 @@ func dataRoot() string {
 }
 
 func repositoriesPath() string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "repositories.json")
+	return filepath.Join(DataRoot(), "image", storageDriver, "repositories.json")
 }
 
 func manifestPath(digest string) string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "distribution", "manifests", digestAlgorithm(digest), digestHexPart(digest)+".json")
+	return filepath.Join(DataRoot(), "image", storageDriver, "distribution", "manifests", digestAlgorithm(digest), digestHexPart(digest)+".json")
 }
 
 func configPath(digest string) string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "imagedb", "content", digestAlgorithm(digest), digestHexPart(digest))
+	return filepath.Join(DataRoot(), "image", storageDriver, "imagedb", "content", digestAlgorithm(digest), digestHexPart(digest))
 }
 
 func blobPath(digest string) string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "blobs", digestAlgorithm(digest), digestHexPart(digest), "data")
+	return filepath.Join(DataRoot(), "image", storageDriver, "blobs", digestAlgorithm(digest), digestHexPart(digest), "data")
 }
 
 func diffIDMappingPath(digest string) string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "distribution", "diffid-by-digest", digestAlgorithm(digest), digestHexPart(digest))
+	return filepath.Join(DataRoot(), "image", storageDriver, "distribution", "diffid-by-digest", digestAlgorithm(digest), digestHexPart(digest))
 }
 
 func layerDBDir(chainID string) string {
-	return filepath.Join(dataRoot(), "image", storageDriver, "layerdb", digestAlgorithm(chainID), digestHexPart(chainID))
+	return filepath.Join(DataRoot(), "image", storageDriver, "layerdb", digestAlgorithm(chainID), digestHexPart(chainID))
 }
 
-func overlayRoot() string {
-	return filepath.Join(dataRoot(), storageDriver)
+func OverlayRoot() string {
+	return filepath.Join(DataRoot(), storageDriver)
 }
 
 func digestAlgorithm(digest string) string {
