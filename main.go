@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"tinydocker/cli"
@@ -13,11 +14,16 @@ const (
 
 func init() {
 	info, err := os.Stat(def)
-	if err == os.ErrExist { // 创建目录
+	if errors.Is(err, os.ErrNotExist) {
 		if err = os.MkdirAll(def, fs.ModePerm); err != nil {
 			system.Panic("创建容器目录失败，请检查权限，err=%s", err.Error())
 		}
-	} else if !info.IsDir() {
+		return
+	}
+	if err != nil {
+		system.Panic("检查容器目录失败，err=%s", err.Error())
+	}
+	if !info.IsDir() {
 		system.Panic("存在和容器目录同名的文件，请先清理")
 	}
 }
@@ -27,5 +33,7 @@ func main() {
 		system.Panic("缺少操作指令")
 	}
 	manager := cli.NewCliManager()
-	manager.Run(os.Args[1:])
+	if err := manager.Run(os.Args[1:]); err != nil {
+		system.Panic("%s", err.Error())
+	}
 }

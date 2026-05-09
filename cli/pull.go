@@ -1,6 +1,9 @@
 package cli
 
-const registry = "registry-1.docker.io"
+import (
+	"fmt"
+	"tinydocker/pkg/image"
+)
 
 func init() {
 	registerCli("pull", &PullCli{})
@@ -10,5 +13,8 @@ type PullCli struct {
 }
 
 func (*PullCli) Exec(args ...string) error {
-	return nil
+	if len(args) != 1 {
+		return fmt.Errorf("usage: tinydocker pull <image>")
+	}
+	return image.Pull(args[0])
 }
