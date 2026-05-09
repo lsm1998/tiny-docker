@@ -8,6 +8,8 @@ var cliMap = map[string]DockerCli{}
 
 type DockerCli interface {
 	Exec(args ...string) error
+
+	Description() string
 }
 
 type cliManager struct {

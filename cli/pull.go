@@ -18,3 +18,7 @@ func (*PullCli) Exec(args ...string) error {
 	}
 	return image.Pull(args[0])
 }
+
+func (*PullCli) Description() string {
+	return "Pull an image"
+}

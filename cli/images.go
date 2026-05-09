@@ -41,3 +41,7 @@ func (*ImagesCli) Exec(args ...string) error {
 	}
 	return tw.Flush()
 }
+
+func (*ImagesCli) Description() string {
+	return "List local images"
+}
