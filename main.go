@@ -8,7 +8,7 @@ import (
 
 func main() {
 	if len(os.Args) <= 1 {
-		system.Panic("缺少操作指令")
+		system.Panic("usage: tinydocker <command>")
 	}
 	manager := cli.NewCliManager()
 	if err := manager.Run(os.Args[1:]); err != nil {

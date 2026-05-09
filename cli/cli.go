@@ -23,7 +23,7 @@ func (*cliManager) Run(args []string) error {
 	cmd := args[0]
 	cli, ok := cliMap[cmd]
 	if !ok {
-		return fmt.Errorf("命令[%s]找不到", cmd)
+		return fmt.Errorf("command [%s] not found", cmd)
 	}
 	return cli.Exec(args[1:]...)
 }
