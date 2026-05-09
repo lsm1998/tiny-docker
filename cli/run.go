@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"tinydocker/pkg/container"
 )
@@ -14,10 +15,30 @@ type RunCli struct {
 }
 
 func (*RunCli) Exec(args ...string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: tinydocker run <image> [command...]")
+	opts := container.Options{}
+	i := 0
+	for i < len(args) {
+		if !strings.HasPrefix(args[i], "-") {
+			break
+		}
+		switch args[i] {
+		case "-d", "--detach":
+			opts.Detach = true
+		case "-p", "--publish":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing port mapping for -p")
+			}
+			opts.PortMaps = append(opts.PortMaps, args[i])
+		default:
+			return fmt.Errorf("unknown flag: %s", args[i])
+		}
+		i++
 	}
-	return container.Run(args[0], args[1:])
+	if i >= len(args) {
+		return fmt.Errorf("usage: tinydocker run [OPTIONS] IMAGE [COMMAND...]")
+	}
+	return container.Run(args[i], args[i+1:], opts)
 }
 
 func (*RunCli) Description() string {

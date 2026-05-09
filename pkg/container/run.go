@@ -17,17 +17,23 @@ import (
 )
 
 type Config struct {
-	ID        string `json:"id"`
-	ImageName string `json:"image_name"`
-	Command   string `json:"command"`
-	CreatedAt string `json:"created_at"`
-	Status    string `json:"status"`
-	ExitCode  int    `json:"exit_code"`
-	Pid       int    `json:"pid"`
+	ID        string   `json:"id"`
+	ImageName string   `json:"image_name"`
+	Command   string   `json:"command"`
+	CreatedAt string   `json:"created_at"`
+	Status    string   `json:"status"`
+	ExitCode  int      `json:"exit_code"`
+	Pid       int      `json:"pid"`
+	PortMaps  []string `json:"port_maps,omitempty"`
+}
+
+type Options struct {
+	Detach   bool     // 是否后台运行
+	PortMaps []string // 端口映射
 }
 
 // Run 启动容器
-func Run(rawRef string, cmdArgs []string) error {
+func Run(rawRef string, cmdArgs []string, opts Options) error {
 	img, err := image.FindImage(rawRef)
 	if err != nil {
 		return err
@@ -53,10 +59,10 @@ func Run(rawRef string, cmdArgs []string) error {
 	for i, l := range img.Layers {
 		lowerDirs[len(img.Layers)-1-i] = filepath.Join(image.OverlayRoot(), l.CacheID, "diff")
 	}
-	opts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
+	mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
 		strings.Join(lowerDirs, ":"), upperDir, workDir)
 
-	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, opts); err != nil {
+	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, mountOpts); err != nil {
 		os.RemoveAll(containerDir)
 		return fmt.Errorf("mount overlay: %w", err)
 	}
@@ -76,6 +82,7 @@ func Run(rawRef string, cmdArgs []string) error {
 		Command:   strings.Join(entrypointAndCmd, " "),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		Status:    "running",
+		PortMaps:  opts.PortMaps,
 	}
 	if err := writeConfig(containerDir, cfg); err != nil {
 		os.RemoveAll(containerDir)
@@ -98,11 +105,12 @@ func Run(rawRef string, cmdArgs []string) error {
 		Chroot: mergedDir,
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	if opts.Detach {
+		cmd.SysProcAttr.Setpgid = true
+		cmd.Stdin = nil
+	}
 
 	if err := cmd.Start(); err != nil {
-		signal.Stop(sigCh)
 		cfg.Status = "exited"
 		cfg.ExitCode = -1
 		writeConfig(containerDir, cfg)
@@ -111,6 +119,14 @@ func Run(rawRef string, cmdArgs []string) error {
 
 	cfg.Pid = cmd.Process.Pid
 	writeConfig(containerDir, cfg)
+
+	if opts.Detach {
+		fmt.Printf("%s\n", containerID)
+		return nil
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- cmd.Wait() }()
