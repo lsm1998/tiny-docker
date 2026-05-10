@@ -65,21 +65,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	uid := os.Getuid()
 	gid := os.Getgid()
-	if err := syscall.Unshare(syscall.CLONE_NEWUSER); err == nil {
-		if err := os.WriteFile("/proc/self/uid_map", []byte(fmt.Sprintf("%d %d 1\n", uid, uid)), 0); err != nil {
-			return fmt.Errorf("write uid_map: %w", err)
-		}
-		os.WriteFile("/proc/self/setgroups", []byte("deny\n"), 0)
-		if err := os.WriteFile("/proc/self/gid_map", fmt.Appendf(nil, "%d %d 1\n", gid, gid), 0); err != nil {
-			return fmt.Errorf("write gid_map: %w", err)
-		}
-	}
-
-	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, mountOpts); err != nil {
-		os.RemoveAll(containerDir)
-		return fmt.Errorf("mount overlay: %w", err)
-	}
-	defer syscall.Unmount(mergedDir, syscall.MNT_DETACH)
 
 	entrypointAndCmd := buildCommand(img.Entrypoint, img.Cmd, cmdArgs)
 	if len(entrypointAndCmd) == 0 {
@@ -87,7 +72,22 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		return fmt.Errorf("image %q has no entrypoint or cmd", img.Name)
 	}
 
-	bin := resolveExecutable(mergedDir, entrypointAndCmd[0])
+	workingDir := img.WorkingDir
+	if workingDir == "" {
+		workingDir = "/"
+	}
+
+	specJSON, err := json.Marshal(initSpec{
+		MergedDir:  mergedDir,
+		MountOpts:  mountOpts,
+		WorkingDir: workingDir,
+		Env:        img.Env,
+		Argv:       entrypointAndCmd,
+	})
+	if err != nil {
+		os.RemoveAll(containerDir)
+		return fmt.Errorf("marshal init spec: %w", err)
+	}
 
 	cfg := Config{
 		ID:        containerID,
@@ -102,26 +102,27 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		return fmt.Errorf("write container config: %w", err)
 	}
 
-	cmd := exec.Command(bin, entrypointAndCmd[1:]...)
-	cmd.Dir = img.WorkingDir
-	if cmd.Dir == "" {
-		cmd.Dir = "/"
+	selfPath, err := os.Executable()
+	if err != nil {
+		os.RemoveAll(containerDir)
+		return fmt.Errorf("locate self executable: %w", err)
 	}
-	cmd.Env = img.Env
+
+	cmd := exec.Command(selfPath)
+	cmd.Env = append(os.Environ(), initEnvKey+"="+string(specJSON))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID |
-			syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER,
+		Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS |
+			syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWNET,
 		UidMappings: []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: uid, Size: 1},
 		},
 		GidMappings: []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: gid, Size: 1},
 		},
-		Chroot: mergedDir,
 	}
 
 	if opts.Detach {
