@@ -30,6 +30,7 @@ type Config struct {
 type Options struct {
 	Detach   bool     // 是否后台运行
 	PortMaps []string // 端口映射
+	Name     string   // 容器名称
 }
 
 // Run 启动容器
@@ -61,6 +62,18 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	}
 	mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
 		strings.Join(lowerDirs, ":"), upperDir, workDir)
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if err := syscall.Unshare(syscall.CLONE_NEWUSER); err == nil {
+		if err := os.WriteFile("/proc/self/uid_map", []byte(fmt.Sprintf("%d %d 1\n", uid, uid)), 0); err != nil {
+			return fmt.Errorf("write uid_map: %w", err)
+		}
+		os.WriteFile("/proc/self/setgroups", []byte("deny\n"), 0)
+		if err := os.WriteFile("/proc/self/gid_map", fmt.Appendf(nil, "%d %d 1\n", gid, gid), 0); err != nil {
+			return fmt.Errorf("write gid_map: %w", err)
+		}
+	}
 
 	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, mountOpts); err != nil {
 		os.RemoveAll(containerDir)
@@ -101,7 +114,13 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID |
-			syscall.CLONE_NEWNS | syscall.CLONE_NEWNET,
+			syscall.CLONE_NEWNS | syscall.CLONE_NEWNET | syscall.CLONE_NEWUSER,
+		UidMappings: []syscall.SysProcIDMap{
+			{ContainerID: 0, HostID: uid, Size: 1},
+		},
+		GidMappings: []syscall.SysProcIDMap{
+			{ContainerID: 0, HostID: gid, Size: 1},
+		},
 		Chroot: mergedDir,
 	}
 

@@ -30,6 +30,12 @@ func (*RunCli) Exec(args ...string) error {
 				return fmt.Errorf("missing port mapping for -p")
 			}
 			opts.PortMaps = append(opts.PortMaps, args[i])
+		case "--name":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing port mapping for --name")
+			}
+			opts.Name = args[i]
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}
