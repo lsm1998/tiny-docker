@@ -50,6 +50,18 @@ func (*RunCli) Exec(args ...string) error {
 				opts.NetworkMode = container.NetworkBridge
 				opts.NetworkName = args[i]
 			}
+		case "-m", "--memory":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing value for --memory")
+			}
+			opts.Memory = args[i]
+		case "--cpus":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing value for --cpus")
+			}
+			opts.CPUs = args[i]
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}

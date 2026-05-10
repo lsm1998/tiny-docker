@@ -73,7 +73,7 @@ func parsePortMapping(s string) (PortMapping, error) {
 
 // GetContainerPortMappings 获取容器的端口映射列表
 func GetContainerPortMappings(id string) ([]PortMapping, error) {
-	_, cfg, err := findContainerDir(id)
+	_, cfg, err := FindContainerDir(id)
 	if err != nil {
 		return nil, err
 	}

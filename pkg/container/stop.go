@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	"tinydocker/cgroups"
 	"tinydocker/pkg/network"
 )
 
@@ -14,7 +15,7 @@ const stopGracePeriod = 10 * time.Second
 
 // Stop 根据容器id停止
 func Stop(id string) error {
-	dir, cfg, err := findContainerDir(id)
+	dir, cfg, err := FindContainerDir(id)
 	if err != nil {
 		return err
 	}
@@ -41,6 +42,9 @@ func Stop(id string) error {
 		if e := network.ReleaseEndpoint(cfg.ID); e != nil {
 			fmt.Fprintf(os.Stderr, "warn: release endpoint: %s\n", e)
 		}
+	}
+	if e := cgroups.RemoveLeaf(cfg.ID); e != nil {
+		fmt.Fprintf(os.Stderr, "warn: remove cgroup: %s\n", e)
 	}
 
 	cfg.Status = "exited"

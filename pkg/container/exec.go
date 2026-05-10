@@ -21,7 +21,7 @@ func Exec(ref string, argv []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("no command specified")
 	}
-	_, cfg, err := findContainerDir(ref)
+	_, cfg, err := FindContainerDir(ref)
 	if err != nil {
 		return err
 	}

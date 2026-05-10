@@ -9,10 +9,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"tinydocker/cgroups"
 	"tinydocker/config"
 	"tinydocker/pkg/image"
 	"tinydocker/pkg/network"
@@ -41,6 +43,8 @@ type Options struct {
 	Name        string   // 容器名称
 	NetworkMode string   // 网络模式 bridge|host|none
 	NetworkName string   // bridge 模式下使用的网络名,空表示默认 tdbr0
+	Memory      string   // --memory,如 "512m" / "1g" / "1048576",空表示不限
+	CPUs        string   // --cpus,如 "1.5",空表示不限
 }
 
 const (
@@ -242,6 +246,16 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	cfg.Pid = cmd.Process.Pid
 	writeConfig(containerDir, cfg)
 
+	// 应用 cgroup 资源限制(--memory / --cpus)。任何一步失败都 kill + 清 cgroup。
+	if err := applyCgroup(containerID, opts, cfg.Pid); err != nil {
+		cmd.Process.Kill()
+		_ = cgroups.RemoveLeaf(containerID)
+		cfg.Status = "exited"
+		cfg.ExitCode = -1
+		writeConfig(containerDir, cfg)
+		return fmt.Errorf("apply cgroup: %w", err)
+	}
+
 	// bridge 模式:配置容器 netns 网络 + iptables DNAT
 	if opts.NetworkMode == NetworkBridge {
 		bindings := make([]network.PortBinding, 0, len(mappings))
@@ -256,6 +270,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		ep, err := network.ConnectContainer(opts.NetworkName, containerID, cfg.Pid, bindings)
 		if err != nil {
 			cmd.Process.Kill()
+			_ = cgroups.RemoveLeaf(containerID)
 			cfg.Status = "exited"
 			cfg.ExitCode = -1
 			writeConfig(containerDir, cfg)
@@ -292,6 +307,9 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 			if e := network.ReleaseEndpoint(containerID); e != nil {
 				fmt.Fprintf(os.Stderr, "warn: release endpoint: %s\n", e)
 			}
+		}
+		if e := cgroups.RemoveLeaf(containerID); e != nil {
+			fmt.Fprintf(os.Stderr, "warn: remove cgroup: %s\n", e)
 		}
 		if opts.Rm {
 			syscall.Unmount(mergedDir, syscall.MNT_DETACH)
@@ -390,4 +408,34 @@ func randomHex(size int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+// applyCgroup 在 /sys/fs/cgroup/tinydocker/<id>/ 创建 leaf,按 opts 设 limit,
+// 把容器 init pid 加进去。没传 --memory 也没传 --cpus 时啥也不做。
+func applyCgroup(containerID string, opts Options, pid int) error {
+	if opts.Memory == "" && opts.CPUs == "" {
+		return nil
+	}
+	if err := cgroups.EnsureParent(); err != nil {
+		return err
+	}
+	cm := cgroups.NewCGroupManager(cgroups.LeafName(containerID))
+	if opts.Memory != "" {
+		bytes, err := cgroups.ParseMemoryLimit(opts.Memory)
+		if err != nil {
+			return fmt.Errorf("--memory: %w", err)
+		}
+		if err := cm.SetMemoryLimit(strconv.FormatInt(bytes, 10)); err != nil {
+			return fmt.Errorf("set memory: %w", err)
+		}
+	}
+	if opts.CPUs != "" {
+		if err := cm.SetCPULimit(opts.CPUs); err != nil {
+			return fmt.Errorf("set cpus: %w", err)
+		}
+	}
+	if err := cm.Apply(pid); err != nil {
+		return fmt.Errorf("attach pid: %w", err)
+	}
+	return nil
 }

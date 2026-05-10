@@ -16,7 +16,7 @@ func Logs(id string) ([]byte, error) {
 
 // LogsPath 根据容器id获取日志路径
 func LogsPath(id string) (string, error) {
-	dir, _, err := findContainerDir(id)
+	dir, _, err := FindContainerDir(id)
 	if err != nil {
 		return "", err
 	}

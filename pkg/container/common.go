@@ -9,8 +9,8 @@ import (
 	"tinydocker/pkg/image"
 )
 
-// findContainerDir 查询容器配置
-func findContainerDir(ref string) (string, Config, error) {
+// FindContainerDir 查询容器配置
+func FindContainerDir(ref string) (string, Config, error) {
 	containersDir := filepath.Join(image.DataRoot(), "containers")
 	entries, err := os.ReadDir(containersDir)
 	if err != nil {
