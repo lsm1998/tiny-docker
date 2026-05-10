@@ -10,33 +10,103 @@ import (
 )
 
 // findContainerDir 查询容器配置
-func findContainerDir(id string) (string, Config, error) {
+func findContainerDir(ref string) (string, Config, error) {
 	containersDir := filepath.Join(image.DataRoot(), "containers")
 	entries, err := os.ReadDir(containersDir)
 	if err != nil {
 		return "", Config{}, err
 	}
 
-	var matched string
+	var (
+		nameMatch   string
+		nameCfg     Config
+		prefixMatch string
+		prefixCfg   Config
+		prefixHits  int
+	)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if strings.HasPrefix(entry.Name(), id) {
-			if matched != "" {
-				return "", Config{}, fmt.Errorf("multiple containers match prefix %q", id)
-			}
-			matched = entry.Name()
+		dir := filepath.Join(containersDir, entry.Name())
+		cfg, err := ReadConfig(dir)
+		if err != nil {
+			continue
+		}
+		if cfg.Name != "" && cfg.Name == ref {
+			nameMatch = dir
+			nameCfg = cfg
+			break
+		}
+		if strings.HasPrefix(entry.Name(), ref) {
+			prefixMatch = dir
+			prefixCfg = cfg
+			prefixHits++
 		}
 	}
-	if matched == "" {
-		return "", Config{}, fmt.Errorf("container %q not found", id)
-	}
 
-	dir := filepath.Join(containersDir, matched)
-	cfg, err := ReadConfig(dir)
-	if err != nil {
-		return "", Config{}, err
+	if nameMatch != "" {
+		return nameMatch, nameCfg, nil
 	}
-	return dir, cfg, nil
+	if prefixHits > 1 {
+		return "", Config{}, fmt.Errorf("multiple containers match prefix %q", ref)
+	}
+	if prefixMatch == "" {
+		return "", Config{}, fmt.Errorf("container %q not found", ref)
+	}
+	return prefixMatch, prefixCfg, nil
+}
+
+// validateName 检查 --name 参数的合法性。空字符串视为未指定，直接放行。
+func validateName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if len(name) > 128 {
+		return fmt.Errorf("container name %q is too long (max 128)", name)
+	}
+	first := name[0]
+	if !isAlpha(first) && !isDigit(first) {
+		return fmt.Errorf("container name must start with a letter or digit: %q", name)
+	}
+	for i := 1; i < len(name); i++ {
+		c := name[i]
+		if !isAlpha(c) && !isDigit(c) && c != '_' && c != '.' && c != '-' {
+			return fmt.Errorf("container name contains invalid character %q", string(c))
+		}
+	}
+	return nil
+}
+
+// ensureNameAvailable 拒绝与已有容器同名
+func ensureNameAvailable(name string) error {
+	containersDir := filepath.Join(image.DataRoot(), "containers")
+	entries, err := os.ReadDir(containersDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		cfg, err := ReadConfig(filepath.Join(containersDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		if cfg.Name == name {
+			return fmt.Errorf("container name %q is already in use by %s", name, cfg.ID)
+		}
+	}
+	return nil
+}
+
+func isAlpha(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }

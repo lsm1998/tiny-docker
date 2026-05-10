@@ -34,7 +34,7 @@ func (*PsCli) Exec(args ...string) error {
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "CONTAINER ID\tIMAGE\tCOMMAND\tCREATED\tSTATUS")
+	fmt.Fprintln(tw, "CONTAINER ID\tIMAGE\tCOMMAND\tCREATED\tSTATUS\tNAMES")
 
 	if len(containers) == 0 {
 		return tw.Flush()
@@ -43,12 +43,13 @@ func (*PsCli) Exec(args ...string) error {
 	for _, item := range containers {
 		fmt.Fprintf(
 			tw,
-			"%s\t%s\t%s\t%s\t%s\n",
+			"%s\t%s\t%s\t%s\t%s\t%s\n",
 			stringutil.ShortImageID(item.ID),
 			item.Image,
 			item.Command,
 			timeutil.FormatRelativeTime(item.CreatedAt),
 			formatStatus(item.Status, item.ExitCode),
+			item.Name,
 		)
 	}
 	return tw.Flush()

@@ -24,6 +24,8 @@ func (*RunCli) Exec(args ...string) error {
 		switch args[i] {
 		case "-d", "--detach":
 			opts.Detach = true
+		case "--rm":
+			opts.Rm = true
 		case "-p", "--publish":
 			i++
 			if i >= len(args) {
@@ -36,6 +38,12 @@ func (*RunCli) Exec(args ...string) error {
 				return fmt.Errorf("missing port mapping for --name")
 			}
 			opts.Name = args[i]
+		case "--network":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing value for --network")
+			}
+			opts.NetworkMode = args[i]
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}

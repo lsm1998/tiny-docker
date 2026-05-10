@@ -8,9 +8,10 @@ import (
 	"tinydocker/pkg/image"
 )
 
-// Info is the public-facing container summary for listing.
+// Info 容器信息
 type Info struct {
 	ID        string
+	Name      string
 	Image     string
 	Command   string
 	CreatedAt string
@@ -18,8 +19,7 @@ type Info struct {
 	ExitCode  int
 }
 
-// List returns containers sorted by creation time (newest first).
-// If all is false, only running containers are returned.
+// List 返回容器信息
 func List(all bool) ([]Info, error) {
 	containersDir := filepath.Join(image.DataRoot(), "containers")
 
@@ -45,6 +45,7 @@ func List(all bool) ([]Info, error) {
 		}
 		containers = append(containers, Info{
 			ID:        cfg.ID,
+			Name:      cfg.Name,
 			Image:     cfg.ImageName,
 			Command:   cfg.Command,
 			CreatedAt: cfg.CreatedAt,

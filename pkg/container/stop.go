@@ -1,6 +1,7 @@
 package container
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -22,6 +23,12 @@ func Stop(id string) error {
 		return fmt.Errorf("find process %d: %w", cfg.Pid, err)
 	}
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
+			cfg.Status = "exited"
+			cfg.ExitCode = 0
+			writeConfig(dir, cfg)
+			return nil
+		}
 		return fmt.Errorf("stop container: %w", err)
 	}
 

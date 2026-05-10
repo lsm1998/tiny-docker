@@ -2,21 +2,25 @@ package container
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unsafe"
 )
 
 const initEnvKey = "_TINYDOCKER_INIT"
 
 type initSpec struct {
-	MergedDir  string
-	MountOpts  string
-	WorkingDir string
-	Env        []string
-	Argv       []string
+	MergedDir   string
+	MountOpts   string
+	WorkingDir  string
+	Env         []string
+	Argv        []string
+	IsolatedNet bool
 }
 
 func MaybeInit() {
@@ -47,6 +51,17 @@ func runInit(spec initSpec) error {
 		return fmt.Errorf("mount overlay: %w", err)
 	}
 
+	// 保证 chroot 后要用到的挂载点存在
+	if err := os.MkdirAll(filepath.Join(spec.MergedDir, "proc"), 0o755); err != nil {
+		return fmt.Errorf("create /proc: %w", err)
+	}
+
+	if spec.IsolatedNet {
+		if err := bringLoUp(); err != nil {
+			return fmt.Errorf("bring up loopback: %w", err)
+		}
+	}
+
 	if err := syscall.Chroot(spec.MergedDir); err != nil {
 		return fmt.Errorf("chroot: %w", err)
 	}
@@ -54,8 +69,70 @@ func runInit(spec initSpec) error {
 		return fmt.Errorf("chdir %q: %w", spec.WorkingDir, err)
 	}
 
+	// chroot 之后挂载，使容器看到属于自己 PID namespace 的 /proc
+	if err := syscall.Mount("proc", "/proc", "proc", uintptr(syscall.MS_NOSUID|syscall.MS_NODEV|syscall.MS_NOEXEC), ""); err != nil {
+		return fmt.Errorf("mount /proc: %w", err)
+	}
+
+	return runAsPid1(spec)
+}
+
+// runAsPid1 让 init 进程留在 PID 1 上，fork 出真正的用户命令，
+// 自己负责信号转发和孤儿僵尸回收。正常路径不会返回（直接 os.Exit）。
+func runAsPid1(spec initSpec) error {
 	bin := lookupInRootfs(spec.Argv[0])
-	return syscall.Exec(bin, spec.Argv, spec.Env)
+
+	childPid, err := syscall.ForkExec(bin, spec.Argv, &syscall.ProcAttr{
+		Env:   spec.Env,
+		Files: []uintptr{0, 1, 2},
+	})
+	if err != nil {
+		return fmt.Errorf("exec %q: %w", bin, err)
+	}
+
+	sigCh := make(chan os.Signal, 16)
+	signal.Notify(sigCh, forwardableSignals...)
+	defer signal.Stop(sigCh)
+
+	go func() {
+		for sig := range sigCh {
+			if s, ok := sig.(syscall.Signal); ok {
+				_ = syscall.Kill(childPid, s)
+			}
+		}
+	}()
+
+	for {
+		var ws syscall.WaitStatus
+		wpid, err := syscall.Wait4(-1, &ws, 0, nil)
+		if err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			return fmt.Errorf("wait4: %w", err)
+		}
+		if wpid == childPid {
+			os.Exit(exitCodeFromStatus(ws))
+		}
+		// 其他孤儿子进程已经被本次 wait 回收，继续循环
+	}
+}
+
+func exitCodeFromStatus(ws syscall.WaitStatus) int {
+	switch {
+	case ws.Exited():
+		return ws.ExitStatus()
+	case ws.Signaled():
+		return 128 + int(ws.Signal())
+	default:
+		return -1
+	}
+}
+
+var forwardableSignals = []os.Signal{
+	syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM,
+	syscall.SIGUSR1, syscall.SIGUSR2, syscall.SIGWINCH,
+	syscall.SIGTSTP, syscall.SIGTTIN, syscall.SIGTTOU,
 }
 
 func lookupInRootfs(name string) string {
@@ -69,4 +146,38 @@ func lookupInRootfs(name string) string {
 		}
 	}
 	return "/bin/" + name
+}
+
+// bringLoUp 通过 ioctl 启用回环接口，避免依赖 ip/ifconfig。
+func bringLoUp() error {
+	const (
+		siocGifFlags = 0x8913
+		siocSifFlags = 0x8914
+		iffUp        = 0x1
+	)
+	type ifreqFlags struct {
+		Name  [16]byte
+		Flags uint16
+		_pad  [22]byte
+	}
+
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM|syscall.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(fd)
+
+	var req ifreqFlags
+	copy(req.Name[:], "lo")
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(fd), siocGifFlags, uintptr(unsafe.Pointer(&req))); errno != 0 {
+		return fmt.Errorf("SIOCGIFFLAGS: %w", errno)
+	}
+	req.Flags |= iffUp
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		uintptr(fd), siocSifFlags, uintptr(unsafe.Pointer(&req))); errno != 0 {
+		return fmt.Errorf("SIOCSIFFLAGS: %w", errno)
+	}
+	return nil
 }

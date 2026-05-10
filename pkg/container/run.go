@@ -18,6 +18,7 @@ import (
 
 type Config struct {
 	ID        string   `json:"id"`
+	Name      string   `json:"name,omitempty"`
 	ImageName string   `json:"image_name"`
 	Command   string   `json:"command"`
 	CreatedAt string   `json:"created_at"`
@@ -28,13 +29,42 @@ type Config struct {
 }
 
 type Options struct {
-	Detach   bool     // 是否后台运行
-	PortMaps []string // 端口映射
-	Name     string   // 容器名称
+	Detach      bool     // 是否后台运行
+	Rm          bool     // 退出后自动清理 containerDir
+	PortMaps    []string // 端口映射
+	Name        string   // 容器名称
+	NetworkMode string   // 网络模式 默认host
 }
+
+const (
+	NetworkHost = "host"
+	NetworkNone = "none"
+)
 
 // Run 启动容器
 func Run(rawRef string, cmdArgs []string, opts Options) error {
+	if err := validateName(opts.Name); err != nil {
+		return err
+	}
+	if opts.Name != "" {
+		if err := ensureNameAvailable(opts.Name); err != nil {
+			return err
+		}
+	}
+
+	if opts.Detach && opts.Rm {
+		return fmt.Errorf("--rm cannot be used with -d (detached)")
+	}
+
+	switch opts.NetworkMode {
+	case "":
+		opts.NetworkMode = NetworkHost
+	case NetworkHost, NetworkNone:
+	default:
+		return fmt.Errorf("unsupported network mode %q (host|none)", opts.NetworkMode)
+	}
+	isolatedNet := opts.NetworkMode == NetworkNone
+
 	img, err := image.FindImage(rawRef)
 	if err != nil {
 		return err
@@ -78,11 +108,12 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	}
 
 	specJSON, err := json.Marshal(initSpec{
-		MergedDir:  mergedDir,
-		MountOpts:  mountOpts,
-		WorkingDir: workingDir,
-		Env:        img.Env,
-		Argv:       entrypointAndCmd,
+		MergedDir:   mergedDir,
+		MountOpts:   mountOpts,
+		WorkingDir:  workingDir,
+		Env:         img.Env,
+		Argv:        entrypointAndCmd,
+		IsolatedNet: isolatedNet,
 	})
 	if err != nil {
 		os.RemoveAll(containerDir)
@@ -91,6 +122,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	cfg := Config{
 		ID:        containerID,
+		Name:      opts.Name,
 		ImageName: img.Name,
 		Command:   strings.Join(entrypointAndCmd, " "),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -114,9 +146,14 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	cloneflags := uintptr(syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS |
+		syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS)
+	if isolatedNet {
+		cloneflags |= syscall.CLONE_NEWNET
+	}
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS |
-			syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS | syscall.CLONE_NEWNET,
+		Cloneflags: cloneflags,
 		UidMappings: []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: uid, Size: 1},
 		},
