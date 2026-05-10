@@ -105,8 +105,6 @@ func ConnectContainer(networkName, containerID string, pid int, ports []PortBind
 	return ep, nil
 }
 
-// ReleaseEndpoint 容器停止/删除时调用:撤 iptables、删 host veth、释放 IP、删 endpoint 文件
-// 容忍中间步骤的错误,确保尽量做完
 func ReleaseEndpoint(containerID string) error {
 	ep, err := loadEndpoint(containerID)
 	if err != nil {
@@ -116,16 +114,30 @@ func ReleaseEndpoint(containerID string) error {
 		return err
 	}
 
+	var firstErr error
+	noteErr := func(e error) {
+		if e != nil && firstErr == nil {
+			firstErr = e
+		}
+	}
+
 	for _, r := range ep.IPTablesArgs {
 		if e := iptablesDelete(r); e != nil {
 			fmt.Fprintf(os.Stderr, "warn: iptables delete: %s\n", e)
+			noteErr(e)
 		}
 	}
 	if ep.HostVeth != "" {
 		if e := disconnectVeth(ep.HostVeth); e != nil {
 			fmt.Fprintf(os.Stderr, "warn: delete veth %s: %s\n", ep.HostVeth, e)
+			noteErr(e)
 		}
 	}
+	// 上面任何一步失败,先保留 endpoint 文件,等有权限的进程再清理,避免 ghost 规则
+	if firstErr != nil {
+		return firstErr
+	}
+
 	if ep.NetworkName != "" && ep.IP != "" {
 		if nw, e := Get(ep.NetworkName); e == nil {
 			if subnet, se := nw.SubnetIPNet(); se == nil {

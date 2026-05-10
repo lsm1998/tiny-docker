@@ -14,6 +14,11 @@ func Remove(id string, force bool) error {
 	if err != nil {
 		return err
 	}
+	if cfg.NetworkMode == NetworkBridge {
+		if err := requireRoot("rm"); err != nil {
+			return err
+		}
+	}
 
 	if cfg.Status == "running" {
 		if !force {

@@ -16,6 +16,12 @@ func Stop(id string) error {
 	if err != nil {
 		return err
 	}
+
+	if cfg.NetworkMode == NetworkBridge {
+		if err := requireRoot("stop"); err != nil {
+			return err
+		}
+	}
 	if cfg.Status != "running" {
 		return fmt.Errorf("container %q is not running", id)
 	}

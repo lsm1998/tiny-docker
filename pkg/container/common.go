@@ -110,3 +110,10 @@ func isAlpha(c byte) bool {
 func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
 }
+
+func requireRoot(op string) error {
+	if os.Geteuid() == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s requires root (re-run with sudo)", op)
+}
