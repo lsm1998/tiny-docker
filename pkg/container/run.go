@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tinydocker/pkg/image"
+	"tinydocker/pkg/network"
 )
 
 type Config struct {
@@ -27,6 +28,8 @@ type Config struct {
 	Pid         int      `json:"pid"`
 	PortMaps    []string `json:"port_maps,omitempty"`
 	NetworkMode string   `json:"network_mode,omitempty"`
+	NetworkName string   `json:"network_name,omitempty"`
+	IPAddress   string   `json:"ip_address,omitempty"`
 }
 
 type Options struct {
@@ -34,12 +37,14 @@ type Options struct {
 	Rm          bool     // 退出后自动清理 containerDir
 	PortMaps    []string // 端口映射
 	Name        string   // 容器名称
-	NetworkMode string   // 网络模式 默认host
+	NetworkMode string   // 网络模式 bridge|host|none,空表示自动(root→bridge,非 root→host)
+	NetworkName string   // bridge 模式下使用的网络名,空表示默认 tdbr0
 }
 
 const (
-	NetworkHost = "host"
-	NetworkNone = "none"
+	NetworkBridge = "bridge"
+	NetworkHost   = "host"
+	NetworkNone   = "none"
 )
 
 // Run 启动容器
@@ -62,14 +67,31 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		return err
 	}
 
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// 解析网络模式:用户没指定时,root 走 bridge,非 root 回退 host(否则 netlink/iptables 没权限)
 	switch opts.NetworkMode {
 	case "":
-		opts.NetworkMode = NetworkHost
-	case NetworkHost, NetworkNone:
+		if uid == 0 {
+			opts.NetworkMode = NetworkBridge
+		} else {
+			opts.NetworkMode = NetworkHost
+			if len(mappings) == 0 {
+				fmt.Fprintln(os.Stderr, "warning: running as non-root, falling back to host network (bridge requires CAP_NET_ADMIN)")
+			}
+		}
+	case NetworkBridge, NetworkHost, NetworkNone:
 	default:
-		return fmt.Errorf("unsupported network mode %q (host|none)", opts.NetworkMode)
+		return fmt.Errorf("unsupported network mode %q (bridge|host|none)", opts.NetworkMode)
 	}
-	isolatedNet := opts.NetworkMode == NetworkNone
+	if opts.NetworkMode == NetworkBridge && uid != 0 {
+		return fmt.Errorf("network mode %q requires root or CAP_NET_ADMIN", NetworkBridge)
+	}
+	if len(mappings) > 0 && opts.NetworkMode != NetworkBridge {
+		return fmt.Errorf("port mapping (-p) is only supported in bridge network mode")
+	}
+	newNetns := opts.NetworkMode == NetworkBridge || opts.NetworkMode == NetworkNone
 
 	img, err := image.FindImage(rawRef)
 	if err != nil {
@@ -99,9 +121,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	mountOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
 		strings.Join(lowerDirs, ":"), upperDir, workDir)
 
-	uid := os.Getuid()
-	gid := os.Getgid()
-
 	entrypointAndCmd := buildCommand(img.Entrypoint, img.Cmd, cmdArgs)
 	if len(entrypointAndCmd) == 0 {
 		os.RemoveAll(containerDir)
@@ -114,12 +133,12 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	}
 
 	specJSON, err := json.Marshal(initSpec{
-		MergedDir:   mergedDir,
-		MountOpts:   mountOpts,
-		WorkingDir:  workingDir,
-		Env:         img.Env,
-		Argv:        entrypointAndCmd,
-		IsolatedNet: isolatedNet,
+		MergedDir:  mergedDir,
+		MountOpts:  mountOpts,
+		WorkingDir: workingDir,
+		Env:        img.Env,
+		Argv:       entrypointAndCmd,
+		NewNetns:   newNetns,
 	})
 	if err != nil {
 		os.RemoveAll(containerDir)
@@ -135,6 +154,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		Status:      "running",
 		PortMaps:    opts.PortMaps,
 		NetworkMode: opts.NetworkMode,
+		NetworkName: opts.NetworkName,
 	}
 	if err := writeConfig(containerDir, cfg); err != nil {
 		os.RemoveAll(containerDir)
@@ -154,7 +174,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	cmd.Stderr = os.Stderr
 
 	cloneflags := uintptr(syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS)
-	if isolatedNet {
+	if newNetns {
 		cloneflags |= syscall.CLONE_NEWNET
 	}
 
@@ -162,7 +182,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		Cloneflags: cloneflags,
 	}
 
-	// 非 root 用户需要创建 user namespace 做 UID 映射
+	// 非 root 用户需要创建 user namespace 做 UID 映射(只可能用于 host/none 模式)
 	if uid != 0 {
 		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWUSER
 		cmd.SysProcAttr.UidMappings = []syscall.SysProcIDMap{
@@ -171,6 +191,24 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		cmd.SysProcAttr.GidMappings = []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: gid, Size: 1},
 		}
+	}
+
+	// bridge 模式建立同步管道,让 init 在 ForkExec 用户进程前等父进程把 veth/iptables 配好
+	var syncWriter *os.File
+	if opts.NetworkMode == NetworkBridge {
+		r, w, err := os.Pipe()
+		if err != nil {
+			os.RemoveAll(containerDir)
+			return fmt.Errorf("create sync pipe: %w", err)
+		}
+		cmd.ExtraFiles = []*os.File{r}
+		syncWriter = w
+		// 父进程不再持有 read 端,Start 之后立刻关闭
+		defer func() {
+			if syncWriter != nil {
+				syncWriter.Close()
+			}
+		}()
 	}
 
 	if opts.Detach {
@@ -191,26 +229,45 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		writeConfig(containerDir, cfg)
 		return fmt.Errorf("start container: %w", err)
 	}
+	// fork 后,父进程持有的 read 端可以关闭(child 已继承)
+	if cmd.ExtraFiles != nil {
+		for _, f := range cmd.ExtraFiles {
+			f.Close()
+		}
+		cmd.ExtraFiles = nil
+	}
 
 	cfg.Pid = cmd.Process.Pid
 	writeConfig(containerDir, cfg)
 
-	// 启动端口映射
-	if len(mappings) > 0 {
-		if opts.Detach {
-			if err := startPortmapDaemon(containerDir, containerID); err != nil {
-				return err
-			}
-		} else {
-			pf, err := StartPortForwarders(cfg.Pid, mappings, !isolatedNet)
-			if err != nil {
-				cmd.Process.Kill()
-				cfg.Status = "exited"
-				cfg.ExitCode = -1
-				writeConfig(containerDir, cfg)
-				return fmt.Errorf("start port forwarding: %w", err)
-			}
-			defer pf.Stop()
+	// bridge 模式:配置容器 netns 网络 + iptables DNAT
+	if opts.NetworkMode == NetworkBridge {
+		bindings := make([]network.PortBinding, 0, len(mappings))
+		for _, m := range mappings {
+			bindings = append(bindings, network.PortBinding{
+				HostIP:        m.HostIP,
+				HostPort:      m.HostPort,
+				ContainerPort: m.ContainerPort,
+				Protocol:      m.Protocol,
+			})
+		}
+		ep, err := network.ConnectContainer(opts.NetworkName, containerID, cfg.Pid, bindings)
+		if err != nil {
+			cmd.Process.Kill()
+			cfg.Status = "exited"
+			cfg.ExitCode = -1
+			writeConfig(containerDir, cfg)
+			return fmt.Errorf("connect network: %w", err)
+		}
+		cfg.NetworkName = ep.NetworkName
+		cfg.IPAddress = ep.IP
+		writeConfig(containerDir, cfg)
+
+		// 通知 init 网络已就绪
+		if syncWriter != nil {
+			syncWriter.Write([]byte("1"))
+			syncWriter.Close()
+			syncWriter = nil
 		}
 	}
 
@@ -225,13 +282,26 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- cmd.Wait() }()
 
-	select {
-	case err := <-errCh:
-		signal.Stop(sigCh)
+	finalize := func(err error) error {
 		cfg.Status = "exited"
 		cfg.ExitCode = exitCode(err)
 		writeConfig(containerDir, cfg)
-		if err != nil {
+		if opts.NetworkMode == NetworkBridge {
+			if e := network.ReleaseEndpoint(containerID); e != nil {
+				fmt.Fprintf(os.Stderr, "warn: release endpoint: %s\n", e)
+			}
+		}
+		if opts.Rm {
+			syscall.Unmount(mergedDir, syscall.MNT_DETACH)
+			os.RemoveAll(containerDir)
+		}
+		return err
+	}
+
+	select {
+	case err := <-errCh:
+		signal.Stop(sigCh)
+		if err := finalize(err); err != nil {
 			return fmt.Errorf("container: %w", err)
 		}
 		return nil
@@ -241,9 +311,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 			cmd.Process.Kill()
 		}
 		err := <-errCh
-		cfg.Status = "exited"
-		cfg.ExitCode = exitCode(err)
-		writeConfig(containerDir, cfg)
+		_ = finalize(err)
 		return nil
 	}
 }

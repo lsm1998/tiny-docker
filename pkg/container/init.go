@@ -15,12 +15,12 @@ import (
 const initEnvKey = "_TINYDOCKER_INIT"
 
 type initSpec struct {
-	MergedDir   string
-	MountOpts   string
-	WorkingDir  string
-	Env         []string
-	Argv        []string
-	IsolatedNet bool
+	MergedDir  string
+	MountOpts  string
+	WorkingDir string
+	Env        []string
+	Argv       []string
+	NewNetns   bool
 }
 
 func MaybeInit() {
@@ -56,7 +56,7 @@ func runInit(spec initSpec) error {
 		return fmt.Errorf("create /proc: %w", err)
 	}
 
-	if spec.IsolatedNet {
+	if spec.NewNetns {
 		if err := bringLoUp(); err != nil {
 			return fmt.Errorf("bring up loopback: %w", err)
 		}
@@ -74,7 +74,21 @@ func runInit(spec initSpec) error {
 		return fmt.Errorf("mount /proc: %w", err)
 	}
 
+	// 父进程通过 ExtraFiles[0]=FD3 通知网络已经配好,init 才可以 exec 用户进程
+	waitForParent()
+
 	return runAsPid1(spec)
+}
+
+// waitForParent 阻塞读 FD 3 一字节;FD 不存在(host 模式)就直接跳过
+func waitForParent() {
+	f := os.NewFile(3, "sync")
+	if f == nil {
+		return
+	}
+	defer f.Close()
+	var b [1]byte
+	_, _ = f.Read(b[:])
 }
 
 // runAsPid1 让 init 进程留在 PID 1 上，fork 出真正的用户命令，

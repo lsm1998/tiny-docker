@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	"tinydocker/pkg/network"
 )
 
 // Remove 根据容器id删除容器
@@ -17,11 +19,16 @@ func Remove(id string, force bool) error {
 		if !force {
 			return fmt.Errorf("container %q is running, stop it first or use -f", id)
 		}
-		stopPortmap(dir)
+		if err := network.ReleaseEndpoint(cfg.ID); err != nil {
+			fmt.Fprintf(os.Stderr, "warn: release endpoint: %s\n", err)
+		}
 		proc, _ := os.FindProcess(cfg.Pid)
 		if proc != nil {
 			proc.Signal(syscall.SIGKILL)
 		}
+	} else {
+		// 已退出的容器仍可能有 endpoint 残留(异常退出)
+		_ = network.ReleaseEndpoint(cfg.ID)
 	}
 
 	syscall.Unmount(dir+"/merged", syscall.MNT_DETACH)

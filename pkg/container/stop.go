@@ -6,6 +6,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"tinydocker/pkg/network"
 )
 
 // Stop 根据容器id停止
@@ -18,7 +20,9 @@ func Stop(id string) error {
 		return fmt.Errorf("container %q is not running", id)
 	}
 
-	stopPortmap(dir)
+	if err := network.ReleaseEndpoint(cfg.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: release endpoint: %s\n", err)
+	}
 
 	proc, err := os.FindProcess(cfg.Pid)
 	if err != nil {

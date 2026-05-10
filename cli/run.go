@@ -43,7 +43,13 @@ func (*RunCli) Exec(args ...string) error {
 			if i >= len(args) {
 				return fmt.Errorf("missing value for --network")
 			}
-			opts.NetworkMode = args[i]
+			switch args[i] {
+			case container.NetworkHost, container.NetworkNone:
+				opts.NetworkMode = args[i]
+			default:
+				opts.NetworkMode = container.NetworkBridge
+				opts.NetworkName = args[i]
+			}
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}
