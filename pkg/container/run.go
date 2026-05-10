@@ -17,15 +17,16 @@ import (
 )
 
 type Config struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name,omitempty"`
-	ImageName string   `json:"image_name"`
-	Command   string   `json:"command"`
-	CreatedAt string   `json:"created_at"`
-	Status    string   `json:"status"`
-	ExitCode  int      `json:"exit_code"`
-	Pid       int      `json:"pid"`
-	PortMaps  []string `json:"port_maps,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name,omitempty"`
+	ImageName   string   `json:"image_name"`
+	Command     string   `json:"command"`
+	CreatedAt   string   `json:"created_at"`
+	Status      string   `json:"status"`
+	ExitCode    int      `json:"exit_code"`
+	Pid         int      `json:"pid"`
+	PortMaps    []string `json:"port_maps,omitempty"`
+	NetworkMode string   `json:"network_mode,omitempty"`
 }
 
 type Options struct {
@@ -54,6 +55,11 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	if opts.Detach && opts.Rm {
 		return fmt.Errorf("--rm cannot be used with -d (detached)")
+	}
+
+	mappings, err := ParsePortMappings(opts.PortMaps)
+	if err != nil {
+		return err
 	}
 
 	switch opts.NetworkMode {
@@ -121,13 +127,14 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	}
 
 	cfg := Config{
-		ID:        containerID,
-		Name:      opts.Name,
-		ImageName: img.Name,
-		Command:   strings.Join(entrypointAndCmd, " "),
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		Status:    "running",
-		PortMaps:  opts.PortMaps,
+		ID:          containerID,
+		Name:        opts.Name,
+		ImageName:   img.Name,
+		Command:     strings.Join(entrypointAndCmd, " "),
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+		Status:      "running",
+		PortMaps:    opts.PortMaps,
+		NetworkMode: opts.NetworkMode,
 	}
 	if err := writeConfig(containerDir, cfg); err != nil {
 		os.RemoveAll(containerDir)
@@ -146,20 +153,24 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	cloneflags := uintptr(syscall.CLONE_NEWUSER | syscall.CLONE_NEWNS |
-		syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS)
+	cloneflags := uintptr(syscall.CLONE_NEWNS | syscall.CLONE_NEWPID | syscall.CLONE_NEWUTS)
 	if isolatedNet {
 		cloneflags |= syscall.CLONE_NEWNET
 	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: cloneflags,
-		UidMappings: []syscall.SysProcIDMap{
+	}
+
+	// 非 root 用户需要创建 user namespace 做 UID 映射
+	if uid != 0 {
+		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWUSER
+		cmd.SysProcAttr.UidMappings = []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: uid, Size: 1},
-		},
-		GidMappings: []syscall.SysProcIDMap{
+		}
+		cmd.SysProcAttr.GidMappings = []syscall.SysProcIDMap{
 			{ContainerID: 0, HostID: gid, Size: 1},
-		},
+		}
 	}
 
 	if opts.Detach {
@@ -183,6 +194,25 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	cfg.Pid = cmd.Process.Pid
 	writeConfig(containerDir, cfg)
+
+	// 启动端口映射
+	if len(mappings) > 0 {
+		if opts.Detach {
+			if err := startPortmapDaemon(containerDir, containerID); err != nil {
+				return err
+			}
+		} else {
+			pf, err := StartPortForwarders(cfg.Pid, mappings, !isolatedNet)
+			if err != nil {
+				cmd.Process.Kill()
+				cfg.Status = "exited"
+				cfg.ExitCode = -1
+				writeConfig(containerDir, cfg)
+				return fmt.Errorf("start port forwarding: %w", err)
+			}
+			defer pf.Stop()
+		}
+	}
 
 	if opts.Detach {
 		fmt.Printf("%s\n", containerID)

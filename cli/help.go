@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 func init() {
@@ -21,6 +22,9 @@ func (*HelpCli) Exec(args ...string) error {
 
 	var msgList = make([]string, 0, len(cliMap))
 	for k, v := range cliMap {
+		if strings.HasPrefix(k, "_") {
+			continue
+		}
 		msgList = append(msgList, fmt.Sprintf("  %-10s %s\n", k, v.Description()))
 	}
 

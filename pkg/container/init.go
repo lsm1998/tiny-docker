@@ -44,7 +44,7 @@ func MaybeInit() {
 
 func runInit(spec initSpec) error {
 	if err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, ""); err != nil {
-		return fmt.Errorf("make mounts private: %w", err)
+		fmt.Fprintf(os.Stderr, "tinydocker init: warning: make mounts private: %s (continuing)\n", err)
 	}
 
 	if err := syscall.Mount("overlay", spec.MergedDir, "overlay", 0, spec.MountOpts); err != nil {

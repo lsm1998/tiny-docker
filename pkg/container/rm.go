@@ -17,6 +17,7 @@ func Remove(id string, force bool) error {
 		if !force {
 			return fmt.Errorf("container %q is running, stop it first or use -f", id)
 		}
+		stopPortmap(dir)
 		proc, _ := os.FindProcess(cfg.Pid)
 		if proc != nil {
 			proc.Signal(syscall.SIGKILL)

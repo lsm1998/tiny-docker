@@ -11,6 +11,14 @@ import (
 func main() {
 	container.MaybeInit()
 
+	if containerID := os.Getenv("_TINYDOCKER_PORTMAP"); containerID != "" {
+		os.Unsetenv("_TINYDOCKER_PORTMAP")
+		if err := container.RunPortmapDaemon(containerID); err != nil {
+			system.Panic("%s", err.Error())
+		}
+		return
+	}
+
 	if len(os.Args) <= 1 {
 		system.Panic("usage: tinydocker <command>")
 	}

@@ -18,6 +18,8 @@ func Stop(id string) error {
 		return fmt.Errorf("container %q is not running", id)
 	}
 
+	stopPortmap(dir)
+
 	proc, err := os.FindProcess(cfg.Pid)
 	if err != nil {
 		return fmt.Errorf("find process %d: %w", cfg.Pid, err)
