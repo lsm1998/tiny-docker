@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"tinydocker/cli"
+	_ "tinydocker/config"
 	"tinydocker/pkg/system"
 )
 

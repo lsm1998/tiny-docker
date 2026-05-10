@@ -21,11 +21,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"tinydocker/config"
 )
 
 const (
 	defaultRegistryHost = "registry-1.docker.io"
-	defaultDataRoot     = "/var/lib/tinydocker"
 	storageDriver       = "overlay2"
 )
 
@@ -36,14 +36,6 @@ var acceptedManifestTypes = []string{
 	"application/vnd.docker.distribution.manifest.v2+json",
 	"application/vnd.docker.distribution.manifest.v1+json",
 	"application/json",
-}
-
-// 国内加速镜像站点
-var mirrors = []string{
-	"docker.m.daocloud.io",
-	"dockerproxy.com",
-	"hub-mirror.c.163.com",
-	"mirror.baidubce.com",
 }
 
 type imageReference struct {
@@ -136,8 +128,8 @@ type storedLayer struct {
 }
 
 func buildRegistryHosts(original string) []string {
-	hosts := make([]string, 0, len(mirrors)+1)
-	for _, m := range mirrors {
+	hosts := make([]string, 0, len(config.C.Mirrors)+1)
+	for _, m := range config.C.Mirrors {
 		if m != original {
 			hosts = append(hosts, m)
 		}
@@ -820,6 +812,14 @@ func upsertRepositoryIndex(image storedImage) error {
 	return writeFileAtomic(repositoriesPath(), data, 0o644)
 }
 
+func upsertRepositoryIndexDirect(index repositoryIndex) error {
+	data, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(repositoriesPath(), data, 0o644)
+}
+
 func loadRepositoryIndex() (repositoryIndex, error) {
 	path := repositoriesPath()
 	data, err := os.ReadFile(path)
@@ -873,10 +873,11 @@ func ensurePullLayout() error {
 }
 
 func DataRoot() string {
+	// 优先加载环境变量
 	if root := strings.TrimSpace(os.Getenv("TINYDOCKER_HOME")); root != "" {
 		return filepath.Clean(root)
 	}
-	return defaultDataRoot
+	return config.C.DataRoot
 }
 
 func repositoriesPath() string {

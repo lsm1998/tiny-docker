@@ -1,0 +1,10 @@
+data-root: /home/lsm/.tinydocker
+mirrors:
+ - docker.xuanyuan.me
+ - docker.m.daocloud.io
+ - dockerproxy.com
+ - hub-mirror.c.163.com
+ - mirror.baidubce.com
+dns: 
+ - 8.8.8.8  
+bip: 172.17.0.1/16

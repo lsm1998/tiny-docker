@@ -14,7 +14,6 @@
             "args": [
                 "help"
             ],
-            "console": "integratedTerminal"
         },
         {
             "name": "pull",
@@ -27,8 +26,6 @@
                 "pull",
                 "nginx"
             ],
-            "asRoot": true,
-            "console": "integratedTerminal"
         },
         {
             "name": "images",
@@ -40,8 +37,6 @@
             "args": [
                 "images"
             ],
-            "asRoot": true,
-            "console": "integratedTerminal"
         },
         {
             "name": "run",
@@ -57,8 +52,6 @@
                 "8080:80",
                 "nginx"
             ],
-            "asRoot": true,
-            "console": "integratedTerminal"
         },
         {
             "name": "ps",
@@ -71,8 +64,6 @@
                 "ps",
                 "-a"
             ],
-            "asRoot": true,
-            "console": "integratedTerminal"
         },
     ]
 }
