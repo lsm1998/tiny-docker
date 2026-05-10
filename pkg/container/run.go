@@ -91,6 +91,9 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	if len(mappings) > 0 && opts.NetworkMode != NetworkBridge {
 		return fmt.Errorf("port mapping (-p) is only supported in bridge network mode")
 	}
+	if err := validatePortMaps(mappings); err != nil {
+		return err
+	}
 	newNetns := opts.NetworkMode == NetworkBridge || opts.NetworkMode == NetworkNone
 
 	img, err := image.FindImage(rawRef)

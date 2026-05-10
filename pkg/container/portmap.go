@@ -2,8 +2,12 @@ package container
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"tinydocker/pkg/image"
 )
 
 // PortMapping 表示一个端口映射规则
@@ -74,4 +78,68 @@ func GetContainerPortMappings(id string) ([]PortMapping, error) {
 		return nil, err
 	}
 	return ParsePortMappings(cfg.PortMaps)
+}
+
+// portsConflict 判断两条端口映射是否冲突
+func portsConflict(a, b PortMapping) bool {
+	if a.Protocol != b.Protocol || a.HostPort != b.HostPort {
+		return false
+	}
+	if a.HostIP == b.HostIP {
+		return true
+	}
+	return a.HostIP == "0.0.0.0" || b.HostIP == "0.0.0.0"
+}
+
+func validatePortMaps(newMaps []PortMapping) error {
+	if len(newMaps) == 0 {
+		return nil
+	}
+	containersDir := filepath.Join(image.DataRoot(), "containers")
+	entries, err := os.ReadDir(containersDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		cfg, err := ReadConfig(filepath.Join(containersDir, entry.Name()))
+		if err != nil || !isAlive(cfg) {
+			continue
+		}
+		existing, err := ParsePortMappings(cfg.PortMaps)
+		if err != nil {
+			continue
+		}
+		for _, e := range existing {
+			for _, n := range newMaps {
+				if portsConflict(e, n) {
+					return fmt.Errorf("host port %s already in use by container %s",
+						formatBinding(n), describeContainer(cfg))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func formatBinding(m PortMapping) string {
+	if m.HostIP == "0.0.0.0" || m.HostIP == "" {
+		return fmt.Sprintf("%d/%s", m.HostPort, m.Protocol)
+	}
+	return fmt.Sprintf("%s:%d/%s", m.HostIP, m.HostPort, m.Protocol)
+}
+
+func describeContainer(cfg Config) string {
+	if cfg.Name != "" {
+		return cfg.Name
+	}
+	if len(cfg.ID) > 12 {
+		return cfg.ID[:12]
+	}
+	return cfg.ID
 }

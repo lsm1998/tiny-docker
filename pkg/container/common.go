@@ -117,3 +117,12 @@ func requireRoot(op string) error {
 	}
 	return fmt.Errorf("%s requires root (re-run with sudo)", op)
 }
+
+// isAlive 综合 status + Pid + /proc 判断容器是否还活着。比单看 cfg.Status 准一点。
+func isAlive(cfg Config) bool {
+	if cfg.Status != "running" || cfg.Pid <= 0 {
+		return false
+	}
+	_, err := os.Stat(fmt.Sprintf("/proc/%d", cfg.Pid))
+	return err == nil
+}
