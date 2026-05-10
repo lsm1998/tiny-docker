@@ -13,8 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"tinydocker/config"
 	"tinydocker/pkg/image"
 	"tinydocker/pkg/network"
+	"tinydocker/pkg/system"
 )
 
 type Config struct {
@@ -37,7 +39,7 @@ type Options struct {
 	Rm          bool     // 退出后自动清理 containerDir
 	PortMaps    []string // 端口映射
 	Name        string   // 容器名称
-	NetworkMode string   // 网络模式 bridge|host|none,空表示自动(root→bridge,非 root→host)
+	NetworkMode string   // 网络模式 bridge|host|none
 	NetworkName string   // bridge 模式下使用的网络名,空表示默认 tdbr0
 }
 
@@ -70,7 +72,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	uid := os.Getuid()
 	gid := os.Getgid()
 
-	// 解析网络模式:用户没指定时,root 走 bridge,非 root 回退 host(否则 netlink/iptables 没权限)
 	switch opts.NetworkMode {
 	case "":
 		if uid == 0 {
@@ -142,6 +143,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		Env:        img.Env,
 		Argv:       entrypointAndCmd,
 		NewNetns:   newNetns,
+		DNS:        config.C.Dns,
 	})
 	if err != nil {
 		os.RemoveAll(containerDir)
@@ -185,7 +187,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		Cloneflags: cloneflags,
 	}
 
-	// 非 root 用户需要创建 user namespace 做 UID 映射(只可能用于 host/none 模式)
 	if uid != 0 {
 		cmd.SysProcAttr.Cloneflags |= syscall.CLONE_NEWUSER
 		cmd.SysProcAttr.UidMappings = []syscall.SysProcIDMap{
@@ -196,7 +197,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		}
 	}
 
-	// bridge 模式建立同步管道,让 init 在 ForkExec 用户进程前等父进程把 veth/iptables 配好
 	var syncWriter *os.File
 	if opts.NetworkMode == NetworkBridge {
 		r, w, err := os.Pipe()
@@ -206,7 +206,6 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		}
 		cmd.ExtraFiles = []*os.File{r}
 		syncWriter = w
-		// 父进程不再持有 read 端,Start 之后立刻关闭
 		defer func() {
 			if syncWriter != nil {
 				syncWriter.Close()
@@ -369,7 +368,7 @@ func writeConfig(containerDir string, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configPath(containerDir), data, 0o644)
+	return system.WriteFileAtomic(configPath(containerDir), data, 0o644)
 }
 
 // ReadConfig reads a container's config.json from its directory.

@@ -8,8 +8,6 @@ import (
 	"os"
 	"sort"
 	"tinydocker/config"
-
-	"golang.org/x/sys/unix"
 )
 
 type networksState struct {
@@ -185,45 +183,19 @@ func withNetworksLocked(fn func(*networksState) error) error {
 	if err := ensureLayout(); err != nil {
 		return err
 	}
-	path := networksFilePath()
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
-		return fmt.Errorf("flock networks: %w", err)
-	}
-	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
-
-	state := networksState{Networks: map[string]Network{}}
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &state); err != nil {
-			return fmt.Errorf("decode networks: %w", err)
+	return withLockedJSON(networksFilePath(), func(data []byte) ([]byte, error) {
+		state := networksState{Networks: map[string]Network{}}
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &state); err != nil {
+				return nil, fmt.Errorf("decode networks: %w", err)
+			}
+			if state.Networks == nil {
+				state.Networks = map[string]Network{}
+			}
 		}
-		if state.Networks == nil {
-			state.Networks = map[string]Network{}
+		if err := fn(&state); err != nil {
+			return nil, err
 		}
-	}
-	if err := fn(&state); err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(&state, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.Truncate(path, 0); err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return err
-	}
-	if _, err := f.Write(out); err != nil {
-		return err
-	}
-	return f.Sync()
+		return json.MarshalIndent(&state, "", "  ")
+	})
 }

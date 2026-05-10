@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+
+	"tinydocker/pkg/system"
 )
 
 // PortBinding 是一个待加 DNAT 的端口映射
@@ -166,7 +168,7 @@ func saveEndpoint(ep *Endpoint) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(endpointFile(ep.ContainerID), data, 0o644)
+	return system.WriteFileAtomic(endpointFile(ep.ContainerID), data, 0o644)
 }
 
 func loadEndpoint(containerID string) (*Endpoint, error) {

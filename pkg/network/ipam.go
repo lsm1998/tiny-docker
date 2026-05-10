@@ -6,10 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -198,48 +195,19 @@ func clearBit(bitmap string, idx int) string {
 
 // withIpamLocked 用 flock 包住 read-modify-write
 func withIpamLocked(fn func(*ipamState) error) error {
-	path := ipamFilePath()
-	if err := os.MkdirAll(dataRoot(), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
-		return fmt.Errorf("flock ipam: %w", err)
-	}
-	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
-
-	state := ipamState{Subnets: map[string]string{}}
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &state); err != nil {
-			return fmt.Errorf("decode ipam: %w", err)
+	return withLockedJSON(ipamFilePath(), func(data []byte) ([]byte, error) {
+		state := ipamState{Subnets: map[string]string{}}
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &state); err != nil {
+				return nil, fmt.Errorf("decode ipam: %w", err)
+			}
+			if state.Subnets == nil {
+				state.Subnets = map[string]string{}
+			}
 		}
-		if state.Subnets == nil {
-			state.Subnets = map[string]string{}
+		if err := fn(&state); err != nil {
+			return nil, err
 		}
-	}
-	if err := fn(&state); err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(&state, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.Truncate(path, 0); err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return err
-	}
-	if _, err := f.Write(out); err != nil {
-		return err
-	}
-	return f.Sync()
+		return json.MarshalIndent(&state, "", "  ")
+	})
 }

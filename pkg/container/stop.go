@@ -34,7 +34,6 @@ func Stop(id string) error {
 
 	exitCode, err := stopProcess(proc, stopGracePeriod)
 	if err != nil {
-		// 进程没杀掉(权限/EPERM 等),网络保留,让调用者排查
 		return err
 	}
 
@@ -63,7 +62,6 @@ func stopProcess(proc *os.Process, timeout time.Duration) (int, error) {
 		}
 		if time.Now().After(deadline) {
 			_ = proc.Signal(syscall.SIGKILL)
-			// 等一小下让内核完成清理,避免立刻 ReleaseEndpoint 时 netns 还在用
 			waitGone(proc, 2*time.Second)
 			return 137, nil
 		}
@@ -71,7 +69,7 @@ func stopProcess(proc *os.Process, timeout time.Duration) (int, error) {
 	}
 }
 
-// waitGone 短暂等待进程从 /proc 消失;超时也直接返回,不阻塞外层流程
+// waitGone 短暂等待进程从 /proc 消失
 func waitGone(proc *os.Process, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
