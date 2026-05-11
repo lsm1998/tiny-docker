@@ -35,7 +35,7 @@ func (*RunCli) Exec(args ...string) error {
 		case "--name":
 			i++
 			if i >= len(args) {
-				return fmt.Errorf("missing port mapping for --name")
+				return fmt.Errorf("missing value for --name")
 			}
 			opts.Name = args[i]
 		case "--network":
@@ -62,6 +62,12 @@ func (*RunCli) Exec(args ...string) error {
 				return fmt.Errorf("missing value for --cpus")
 			}
 			opts.CPUs = args[i]
+		case "-e", "--env":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing value for -e")
+			}
+			opts.Envs = append(opts.Envs, args[i])
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}

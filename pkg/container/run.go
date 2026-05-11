@@ -41,6 +41,7 @@ type Options struct {
 	Rm          bool     // 退出后自动清理 containerDir
 	PortMaps    []string // 端口映射
 	Name        string   // 容器名称
+	Envs        []string // 环境变量
 	NetworkMode string   // 网络模式 bridge|host|none
 	NetworkName string   // bridge 模式下使用的网络名,空表示默认 tdbr0
 	Memory      string   // --memory,如 "512m" / "1g" / "1048576",空表示不限
@@ -140,11 +141,13 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		workingDir = "/"
 	}
 
+	resolvedEnv := mergeContainerEnv(img.Env, opts.Envs)
+
 	specJSON, err := json.Marshal(initSpec{
 		MergedDir:  mergedDir,
 		MountOpts:  mountOpts,
 		WorkingDir: workingDir,
-		Env:        img.Env,
+		Env:        resolvedEnv,
 		Argv:       entrypointAndCmd,
 		NewNetns:   newNetns,
 		DNS:        config.C.Dns,
@@ -438,4 +441,47 @@ func applyCgroup(containerID string, opts Options, pid int) error {
 		return fmt.Errorf("attach pid: %w", err)
 	}
 	return nil
+}
+
+// mergeContainerEnv 合并镜像环境变量与用户通过 -e 传入的变量
+func mergeContainerEnv(imageEnv, userEnv []string) []string {
+	merged := mergeEnvLists(imageEnv, userEnv)
+	if !hasEnvKey(merged, "PATH") {
+		merged = append(merged, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+	}
+	return merged
+}
+
+func mergeEnvLists(groups ...[]string) []string {
+	merged := make([]string, 0)
+	indexByKey := make(map[string]int)
+	for _, group := range groups {
+		for _, value := range group {
+			key := envKey(value)
+			if index, ok := indexByKey[key]; ok {
+				merged[index] = value
+				continue
+			}
+			indexByKey[key] = len(merged)
+			merged = append(merged, value)
+		}
+	}
+	return merged
+}
+
+func envKey(value string) string {
+	if key, _, ok := strings.Cut(value, "="); ok {
+		return key
+	}
+	return value
+}
+
+func hasEnvKey(envs []string, key string) bool {
+	prefix := key + "="
+	for _, value := range envs {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
