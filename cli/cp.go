@@ -76,3 +76,6 @@ func copyFromContainer(containerName string, containerPath string, dst string) e
 	}
 	return container.CopyFromContainer(containerName, containerPath, dstAbs)
 }
+func (*CpCli) UseRoot() bool {
+	return false
+}

@@ -45,3 +45,7 @@ func (*ImagesCli) Exec(args ...string) error {
 func (*ImagesCli) Description() string {
 	return "List local images"
 }
+
+func (*ImagesCli) UseRoot() bool {
+	return false
+}

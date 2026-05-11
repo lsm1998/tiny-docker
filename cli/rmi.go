@@ -28,3 +28,7 @@ func (*RmiCli) Exec(args ...string) error {
 func (*RmiCli) Description() string {
 	return "Remove one or more images"
 }
+
+func (*RmiCli) UseRoot() bool {
+	return false
+}

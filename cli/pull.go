@@ -22,3 +22,7 @@ func (*PullCli) Exec(args ...string) error {
 func (*PullCli) Description() string {
 	return "Pull an image"
 }
+
+func (*PullCli) UseRoot() bool {
+	return false
+}

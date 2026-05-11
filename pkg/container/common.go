@@ -113,13 +113,6 @@ func isDigit(c byte) bool {
 	return c >= '0' && c <= '9'
 }
 
-func requireRoot(op string) error {
-	if os.Geteuid() == 0 {
-		return nil
-	}
-	return fmt.Errorf("%s requires root (re-run with sudo)", op)
-}
-
 // isAlive 综合 status + Pid + /proc 判断容器是否还活着。比单看 cfg.Status 准一点。
 func isAlive(cfg Config) bool {
 	if cfg.Status != "running" || cfg.Pid <= 0 {

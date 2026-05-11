@@ -56,3 +56,6 @@ func (*LogsCli) Exec(args ...string) error {
 func (*LogsCli) Description() string {
 	return "Fetch the logs of a container"
 }
+func (*LogsCli) UseRoot() bool {
+	return false
+}

@@ -65,3 +65,7 @@ func formatStatus(status string, exitCode int) string {
 	}
 	return fmt.Sprintf("Exited (%d)", exitCode)
 }
+
+func (*PsCli) UseRoot() bool {
+	return false
+}

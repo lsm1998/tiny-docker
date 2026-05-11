@@ -92,8 +92,10 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 	default:
 		return fmt.Errorf("unsupported network mode %q (bridge|host|none)", opts.NetworkMode)
 	}
-	if opts.NetworkMode == NetworkBridge && uid != 0 {
-		return fmt.Errorf("network mode %q requires root or CAP_NET_ADMIN", NetworkBridge)
+	if opts.NetworkMode == NetworkBridge {
+		if err := system.RequireRoot("bridge network mode"); err != nil {
+			return err
+		}
 	}
 	if len(mappings) > 0 && opts.NetworkMode != NetworkBridge {
 		return fmt.Errorf("port mapping (-p) is only supported in bridge network mode")

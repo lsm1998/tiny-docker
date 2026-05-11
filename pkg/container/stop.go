@@ -9,6 +9,7 @@ import (
 
 	"tinydocker/cgroups"
 	"tinydocker/pkg/network"
+	"tinydocker/pkg/system"
 )
 
 const stopGracePeriod = 10 * time.Second
@@ -20,7 +21,7 @@ func Stop(id string) error {
 		return err
 	}
 	if cfg.NetworkMode == NetworkBridge {
-		if err := requireRoot("stop"); err != nil {
+		if err := system.RequireRoot("stop"); err != nil {
 			return err
 		}
 	}

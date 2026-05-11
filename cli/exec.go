@@ -22,3 +22,7 @@ func (*ExecCli) Exec(args ...string) error {
 	}
 	return container.Exec(args[0], args[1:])
 }
+
+func (*ExecCli) UseRoot() bool {
+	return false
+}

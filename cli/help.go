@@ -39,3 +39,7 @@ func (*HelpCli) Exec(args ...string) error {
 func (*HelpCli) Description() string {
 	return "Show this help message"
 }
+
+func (*HelpCli) UseRoot() bool {
+	return false
+}

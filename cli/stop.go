@@ -28,3 +28,7 @@ func (*StopCli) Exec(args ...string) error {
 func (*StopCli) Description() string {
 	return "Stop one or more running containers"
 }
+
+func (*StopCli) UseRoot() bool {
+	return false
+}

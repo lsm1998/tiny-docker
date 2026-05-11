@@ -102,3 +102,7 @@ func networkRemove(args []string) error {
 	}
 	return nil
 }
+
+func (*NetworkCli) UseRoot() bool {
+	return true
+}

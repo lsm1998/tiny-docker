@@ -37,3 +37,7 @@ func (*RmCli) Exec(args ...string) error {
 func (*RmCli) Description() string {
 	return "Remove one or more containers"
 }
+
+func (*RmCli) UseRoot() bool {
+	return false
+}

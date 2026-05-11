@@ -29,3 +29,7 @@ func (*inspectCli) Exec(args ...string) error {
 func (*inspectCli) Description() string {
 	return "Display detailed information on a container"
 }
+
+func (*inspectCli) UseRoot() bool {
+	return false
+}

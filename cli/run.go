@@ -88,3 +88,7 @@ func (*RunCli) Exec(args ...string) error {
 func (*RunCli) Description() string {
 	return "Run a container"
 }
+
+func (*RunCli) UseRoot() bool {
+	return false
+}

@@ -55,3 +55,7 @@ func formatPortMapping(m container.PortMapping) string {
 	}
 	return fmt.Sprintf("%s:%d", m.HostIP, m.HostPort)
 }
+
+func (*PortCli) UseRoot() bool {
+	return false
+}

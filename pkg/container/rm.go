@@ -8,6 +8,7 @@ import (
 
 	"tinydocker/cgroups"
 	"tinydocker/pkg/network"
+	"tinydocker/pkg/system"
 )
 
 // Remove 根据容器id删除容器
@@ -17,7 +18,7 @@ func Remove(id string, force bool) error {
 		return err
 	}
 	if cfg.NetworkMode == NetworkBridge {
-		if err := requireRoot("rm"); err != nil {
+		if err := system.RequireRoot("rm"); err != nil {
 			return err
 		}
 	}
