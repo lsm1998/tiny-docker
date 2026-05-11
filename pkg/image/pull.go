@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +21,7 @@ import (
 	"syscall"
 	"time"
 	"tinydocker/config"
+	"tinydocker/pkg/system"
 )
 
 const (
@@ -652,7 +652,7 @@ func ensureLayerBlob(client *registryClient, ref imageReference, digest string) 
 }
 
 func unpackLayer(blobPath, compressedDigest string) (string, string, error) {
-	cacheID, err := randomHex(32)
+	cacheID, err := system.RandomHex(32)
 	if err != nil {
 		return "", "", err
 	}
@@ -756,7 +756,7 @@ func writeLayerMetadata(layer storedLayer, parentChainID string) error {
 		files["parent"] = parentChainID
 	}
 	for name, value := range files {
-		if err := writeFileAtomic(filepath.Join(layerDir, name), []byte(value+"\n"), 0o644); err != nil {
+		if err := system.WriteFileAtomic(filepath.Join(layerDir, name), []byte(value+"\n"), 0o644); err != nil {
 			return err
 		}
 	}
@@ -788,11 +788,11 @@ func storeManifest(ref imageReference, manifest resolvedManifest) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(manifestPath(manifest.Digest), data, 0o644)
+	return system.WriteFileAtomic(manifestPath(manifest.Digest), data, 0o644)
 }
 
 func storeConfigBlob(digest string, payload []byte) error {
-	return writeFileAtomic(configPath(digest), payload, 0o644)
+	return system.WriteFileAtomic(configPath(digest), payload, 0o644)
 }
 
 func upsertRepositoryIndex(image storedImage) error {
@@ -809,7 +809,7 @@ func upsertRepositoryIndex(image storedImage) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(repositoriesPath(), data, 0o644)
+	return system.WriteFileAtomic(repositoriesPath(), data, 0o644)
 }
 
 func upsertRepositoryIndexDirect(index repositoryIndex) error {
@@ -817,7 +817,7 @@ func upsertRepositoryIndexDirect(index repositoryIndex) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(repositoriesPath(), data, 0o644)
+	return system.WriteFileAtomic(repositoriesPath(), data, 0o644)
 }
 
 func loadRepositoryIndex() (repositoryIndex, error) {
@@ -852,7 +852,7 @@ func readDiffIDMapping(digest string) (string, error) {
 }
 
 func writeDiffIDMapping(digest, diffID string) error {
-	return writeFileAtomic(diffIDMappingPath(digest), []byte(diffID+"\n"), 0o644)
+	return system.WriteFileAtomic(diffIDMappingPath(digest), []byte(diffID+"\n"), 0o644)
 }
 
 func ensurePullLayout() error {
@@ -939,25 +939,6 @@ func composeChainID(parentChainID, diffID string) string {
 func digestString(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-func randomHex(size int) (string, error) {
-	buf := make([]byte, size)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
-}
-
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, mode); err != nil {
-		return err
-	}
-	return os.Rename(tempPath, path)
 }
 
 func extractLayer(reader io.Reader, dst string) (string, error) {

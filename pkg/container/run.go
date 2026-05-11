@@ -1,8 +1,6 @@
 package container
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -110,7 +108,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		return err
 	}
 
-	containerID, err := randomHex(16)
+	containerID, err := system.RandomHex(16)
 	if err != nil {
 		return fmt.Errorf("generate container id: %w", err)
 	}
@@ -413,14 +411,6 @@ func ReadConfig(containerDir string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
-}
-
-func randomHex(size int) (string, error) {
-	buf := make([]byte, size)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
 }
 
 // applyCgroup 在 /sys/fs/cgroup/tinydocker/<id>/ 创建 leaf,按 opts 设 limit,

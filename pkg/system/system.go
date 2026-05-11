@@ -1,6 +1,8 @@
 package system
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 )
@@ -27,4 +29,13 @@ func RequireRoot(op string) error {
 		return nil
 	}
 	return fmt.Errorf("%s requires root (re-run with sudo)", op)
+}
+
+// RandomHex 生成 size 字节的随机数的十六进制字符串。
+func RandomHex(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }
