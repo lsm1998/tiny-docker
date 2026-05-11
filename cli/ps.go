@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	registerCli("ps", &PsCli{})
+	registerCli("ps", &cmdEntry{
+		exec:        psExec,
+		description: "List containers",
+	})
 }
 
-type PsCli struct {
-}
-
-func (*PsCli) Exec(args ...string) error {
+func psExec(args ...string) error {
 	all := false
 	for _, arg := range args {
 		switch arg {
@@ -55,17 +55,9 @@ func (*PsCli) Exec(args ...string) error {
 	return tw.Flush()
 }
 
-func (*PsCli) Description() string {
-	return "List containers"
-}
-
 func formatStatus(status string, exitCode int) string {
 	if status == "running" {
 		return "Up"
 	}
 	return fmt.Sprintf("Exited (%d)", exitCode)
-}
-
-func (*PsCli) UseRoot() bool {
-	return false
 }

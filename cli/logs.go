@@ -11,13 +11,13 @@ import (
 )
 
 func init() {
-	registerCli("logs", &LogsCli{})
+	registerCli("logs", &cmdEntry{
+		exec:        logsExec,
+		description: "Fetch the logs of a container",
+	})
 }
 
-type LogsCli struct {
-}
-
-func (*LogsCli) Exec(args ...string) error {
+func logsExec(args ...string) error {
 	follow := false
 	i := 0
 	for i < len(args) {
@@ -51,11 +51,4 @@ func (*LogsCli) Exec(args ...string) error {
 	}()
 
 	return container.LogsWithFollow(args[i], os.Stdout, cancelled, 200*time.Millisecond)
-}
-
-func (*LogsCli) Description() string {
-	return "Fetch the logs of a container"
-}
-func (*LogsCli) UseRoot() bool {
-	return false
 }

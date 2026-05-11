@@ -4,19 +4,20 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+
 	"tinydocker/pkg/image"
 	"tinydocker/pkg/stringutil"
 	"tinydocker/pkg/timeutil"
 )
 
 func init() {
-	registerCli("images", &ImagesCli{})
+	registerCli("images", &cmdEntry{
+		exec:        imagesExec,
+		description: "List local images",
+	})
 }
 
-type ImagesCli struct {
-}
-
-func (*ImagesCli) Exec(args ...string) error {
+func imagesExec(args ...string) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: tinydocker images")
 	}
@@ -40,12 +41,4 @@ func (*ImagesCli) Exec(args ...string) error {
 		)
 	}
 	return tw.Flush()
-}
-
-func (*ImagesCli) Description() string {
-	return "List local images"
-}
-
-func (*ImagesCli) UseRoot() bool {
-	return false
 }

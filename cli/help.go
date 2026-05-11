@@ -7,14 +7,15 @@ import (
 )
 
 func init() {
-	registerCli("help", &HelpCli{})
-	registerCli("?", &HelpCli{})
+	entry := &cmdEntry{
+		exec:        helpExec,
+		description: "Show this help message",
+	}
+	registerCli("help", entry)
+	registerCli("?", entry)
 }
 
-type HelpCli struct {
-}
-
-func (*HelpCli) Exec(args ...string) error {
+func helpExec(args ...string) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: tinydocker help")
 	}
@@ -28,18 +29,9 @@ func (*HelpCli) Exec(args ...string) error {
 		msgList = append(msgList, fmt.Sprintf("  %-10s %s\n", k, v.Description()))
 	}
 
-	// 保证打印顺序
 	slices.Sort(msgList)
 	for _, v := range msgList {
 		fmt.Print(v)
 	}
 	return nil
-}
-
-func (*HelpCli) Description() string {
-	return "Show this help message"
-}
-
-func (*HelpCli) UseRoot() bool {
-	return false
 }

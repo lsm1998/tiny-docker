@@ -7,13 +7,13 @@ import (
 )
 
 func init() {
-	registerCli("rm", &RmCli{})
+	registerCli("rm", &cmdEntry{
+		exec:        rmExec,
+		description: "Remove one or more containers",
+	})
 }
 
-type RmCli struct {
-}
-
-func (*RmCli) Exec(args ...string) error {
+func rmExec(args ...string) error {
 	force := false
 	i := 0
 	for i < len(args) {
@@ -32,12 +32,4 @@ func (*RmCli) Exec(args ...string) error {
 		}
 	}
 	return nil
-}
-
-func (*RmCli) Description() string {
-	return "Remove one or more containers"
-}
-
-func (*RmCli) UseRoot() bool {
-	return false
 }

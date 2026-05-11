@@ -3,17 +3,18 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+
 	"tinydocker/pkg/container"
 )
 
 func init() {
-	registerCli("inspect", &inspectCli{})
+	registerCli("inspect", &cmdEntry{
+		exec:        inspectExec,
+		description: "Display detailed information on a container",
+	})
 }
 
-type inspectCli struct {
-}
-
-func (*inspectCli) Exec(args ...string) error {
+func inspectExec(args ...string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: tinydocker inspect <container-id>")
 	}
@@ -24,12 +25,4 @@ func (*inspectCli) Exec(args ...string) error {
 	data, _ := json.Marshal(cfg)
 	fmt.Println(string(data))
 	return nil
-}
-
-func (*inspectCli) Description() string {
-	return "Display detailed information on a container"
-}
-
-func (*inspectCli) UseRoot() bool {
-	return false
 }

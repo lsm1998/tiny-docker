@@ -8,13 +8,13 @@ import (
 )
 
 func init() {
-	registerCli("run", &RunCli{})
+	registerCli("run", &cmdEntry{
+		exec:        runExec,
+		description: "Run a container",
+	})
 }
 
-type RunCli struct {
-}
-
-func (*RunCli) Exec(args ...string) error {
+func runExec(args ...string) error {
 	opts := container.Options{}
 	i := 0
 	for i < len(args) {
@@ -83,12 +83,4 @@ func (*RunCli) Exec(args ...string) error {
 		return fmt.Errorf("usage: tinydocker run [OPTIONS] IMAGE [COMMAND...]")
 	}
 	return container.Run(args[i], args[i+1:], opts)
-}
-
-func (*RunCli) Description() string {
-	return "Run a container"
-}
-
-func (*RunCli) UseRoot() bool {
-	return false
 }

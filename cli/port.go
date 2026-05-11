@@ -8,12 +8,13 @@ import (
 )
 
 func init() {
-	registerCli("port", &PortCli{})
+	registerCli("port", &cmdEntry{
+		exec:        portExec,
+		description: "List port mappings for a container",
+	})
 }
 
-type PortCli struct{}
-
-func (*PortCli) Exec(args ...string) error {
+func portExec(args ...string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: tinydocker port <container-id> [<port>]")
 	}
@@ -24,7 +25,6 @@ func (*PortCli) Exec(args ...string) error {
 	}
 
 	if len(args) >= 2 {
-		// 过滤指定端口
 		target := args[1]
 		if !strings.Contains(target, "/") {
 			target = target + "/tcp"
@@ -45,17 +45,9 @@ func (*PortCli) Exec(args ...string) error {
 	return nil
 }
 
-func (*PortCli) Description() string {
-	return "List port mappings for a container"
-}
-
 func formatPortMapping(m container.PortMapping) string {
 	if m.HostIP == "0.0.0.0" {
 		return fmt.Sprintf("0.0.0.0:%d", m.HostPort)
 	}
 	return fmt.Sprintf("%s:%d", m.HostIP, m.HostPort)
-}
-
-func (*PortCli) UseRoot() bool {
-	return false
 }

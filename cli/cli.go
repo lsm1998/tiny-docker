@@ -14,6 +14,19 @@ type DockerCli interface {
 	UseRoot() bool
 }
 
+// cmdEntry 实现 DockerCli，通过字段注入 Exec 和 Description 行为。
+type cmdEntry struct {
+	exec        func(args ...string) error
+	description string
+	useRoot     bool
+}
+
+func (e *cmdEntry) Exec(args ...string) error { return e.exec(args...) }
+
+func (e *cmdEntry) Description() string { return e.description }
+
+func (e *cmdEntry) UseRoot() bool { return e.useRoot }
+
 type cliManager struct {
 }
 
@@ -35,6 +48,6 @@ func (*cliManager) Run(args []string) error {
 	return cli.Exec(args[1:]...)
 }
 
-func registerCli(cmd string, cli DockerCli) {
-	cliMap[cmd] = cli
+func registerCli(cmd string, entry *cmdEntry) {
+	cliMap[cmd] = entry
 }

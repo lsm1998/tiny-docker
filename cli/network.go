@@ -9,16 +9,14 @@ import (
 )
 
 func init() {
-	registerCli("network", &NetworkCli{})
+	registerCli("network", &cmdEntry{
+		exec:        networkExec,
+		description: "Manage networks (create|ls|rm)",
+		useRoot:     true,
+	})
 }
 
-type NetworkCli struct{}
-
-func (*NetworkCli) Description() string {
-	return "Manage networks (create|ls|rm)"
-}
-
-func (*NetworkCli) Exec(args ...string) error {
+func networkExec(args ...string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: tinydocker network <create|ls|rm> [args]")
 	}
@@ -101,8 +99,4 @@ func networkRemove(args []string) error {
 		fmt.Printf("removed %s\n", name)
 	}
 	return nil
-}
-
-func (*NetworkCli) UseRoot() bool {
-	return true
 }

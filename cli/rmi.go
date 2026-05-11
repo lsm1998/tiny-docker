@@ -7,13 +7,13 @@ import (
 )
 
 func init() {
-	registerCli("rmi", &RmiCli{})
+	registerCli("rmi", &cmdEntry{
+		exec:        rmiExec,
+		description: "Remove one or more images",
+	})
 }
 
-type RmiCli struct {
-}
-
-func (*RmiCli) Exec(args ...string) error {
+func rmiExec(args ...string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: tinydocker rmi <image>...")
 	}
@@ -23,12 +23,4 @@ func (*RmiCli) Exec(args ...string) error {
 		}
 	}
 	return nil
-}
-
-func (*RmiCli) Description() string {
-	return "Remove one or more images"
-}
-
-func (*RmiCli) UseRoot() bool {
-	return false
 }
