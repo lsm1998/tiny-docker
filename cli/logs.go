@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -32,40 +31,26 @@ func (*LogsCli) Exec(args ...string) error {
 		return fmt.Errorf("usage: tinydocker logs [-f] <container-id>")
 	}
 
-	logPath, err := container.LogsPath(args[i])
-	if err != nil {
-		return err
-	}
-
-	file, err := os.Open(logPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(os.Stdout, file); err != nil {
-		return err
-	}
 	if !follow {
+		data, err := container.Logs(args[i])
+		if err != nil {
+			return err
+		}
+		os.Stdout.Write(data)
 		return nil
 	}
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigCh)
 
-	tick := time.NewTicker(300 * time.Millisecond)
-	defer tick.Stop()
+	cancelled := make(chan struct{})
+	go func() {
+		<-sigCh
+		close(cancelled)
+	}()
 
-	for {
-		select {
-		case <-sigCh:
-			return nil
-		case <-tick.C:
-			if _, err := io.Copy(os.Stdout, file); err != nil {
-				return err
-			}
-		}
-	}
+	return container.LogsWithFollow(args[i], os.Stdout, cancelled, 200*time.Millisecond)
 }
 
 func (*LogsCli) Description() string {
