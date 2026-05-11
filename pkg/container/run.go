@@ -42,6 +42,7 @@ type Options struct {
 	PortMaps    []string // 端口映射
 	Name        string   // 容器名称
 	Envs        []string // 环境变量
+	Volumes     []string // 目录挂载
 	NetworkMode string   // 网络模式 bridge|host|none
 	NetworkName string   // bridge 模式下使用的网络名,空表示默认 tdbr0
 	Memory      string   // --memory,如 "512m" / "1g" / "1048576",空表示不限
@@ -143,6 +144,12 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 
 	resolvedEnv := mergeContainerEnv(img.Env, opts.Envs)
 
+	resolvedVolumes, err := parseVolumes(opts.Volumes)
+	if err != nil {
+		os.RemoveAll(containerDir)
+		return fmt.Errorf("parse volumes: %w", err)
+	}
+
 	specJSON, err := json.Marshal(initSpec{
 		MergedDir:  mergedDir,
 		MountOpts:  mountOpts,
@@ -151,6 +158,7 @@ func Run(rawRef string, cmdArgs []string, opts Options) error {
 		Argv:       entrypointAndCmd,
 		NewNetns:   newNetns,
 		DNS:        config.C.Dns,
+		Volumes:    resolvedVolumes,
 	})
 	if err != nil {
 		os.RemoveAll(containerDir)
@@ -484,4 +492,64 @@ func hasEnvKey(envs []string, key string) bool {
 		}
 	}
 	return false
+}
+
+// parseVolumes 解析 -v 传入的 volume 字符串列表，返回 volumeSpec 切片。
+// 格式: host_path:container_path[:ro]
+func parseVolumes(raws []string) ([]volumeSpec, error) {
+	if len(raws) == 0 {
+		return nil, nil
+	}
+	result := make([]volumeSpec, 0, len(raws))
+	for _, raw := range raws {
+		v, err := parseVolume(raw)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func parseVolume(raw string) (volumeSpec, error) {
+	parts := strings.Split(raw, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return volumeSpec{}, fmt.Errorf("invalid volume spec %q (expected host_path:container_path[:ro])", raw)
+	}
+
+	source := parts[0]
+	target := filepath.Clean(parts[1])
+	if !strings.HasPrefix(target, "/") {
+		return volumeSpec{}, fmt.Errorf("volume target %q must be an absolute path", target)
+	}
+
+	readOnly := false
+	if len(parts) == 3 {
+		if parts[2] == "ro" {
+			readOnly = true
+		} else {
+			return volumeSpec{}, fmt.Errorf("unsupported volume option %q (only 'ro' is supported)", parts[2])
+		}
+	}
+
+	// 检查源目录存在，且是目录
+	info, err := os.Stat(source)
+	if err != nil {
+		return volumeSpec{}, fmt.Errorf("volume source %q: %w", source, err)
+	}
+	if !info.IsDir() {
+		return volumeSpec{}, fmt.Errorf("volume source %q must be a directory", source)
+	}
+
+	// 转绝对路径，避免 chroot 后找不到
+	absSource, err := filepath.Abs(source)
+	if err != nil {
+		return volumeSpec{}, fmt.Errorf("resolve absolute path for %q: %w", source, err)
+	}
+
+	return volumeSpec{
+		Source:   absSource,
+		Target:   target,
+		ReadOnly: readOnly,
+	}, nil
 }

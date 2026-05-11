@@ -26,6 +26,13 @@ type initSpec struct {
 	Argv       []string
 	NewNetns   bool
 	DNS        []string
+	Volumes    []volumeSpec
+}
+
+type volumeSpec struct {
+	Source   string `json:"source"`
+	Target   string `json:"target"`
+	ReadOnly bool   `json:"read_only"`
 }
 
 func MaybeInit() {
@@ -54,6 +61,24 @@ func runInit(spec initSpec) error {
 
 	if err := syscall.Mount("overlay", spec.MergedDir, "overlay", 0, spec.MountOpts); err != nil {
 		return fmt.Errorf("mount overlay: %w", err)
+	}
+
+	// bind mount volumes 到 overlay 合并目录下的目标路径（在 chroot 之前做）。
+	for _, v := range spec.Volumes {
+		targetInMerged := filepath.Join(spec.MergedDir, v.Target)
+		if err := os.MkdirAll(targetInMerged, 0o755); err != nil {
+			return fmt.Errorf("create volume target %s: %w", v.Target, err)
+		}
+		// bind mount: 把宿主机目录挂到 overlay merged 中的目标路径
+		if err := syscall.Mount(v.Source, targetInMerged, "", syscall.MS_BIND, ""); err != nil {
+			return fmt.Errorf("bind mount %s -> %s: %w", v.Source, v.Target, err)
+		}
+		if v.ReadOnly {
+			// remount bind + read-only
+			if err := syscall.Mount("", targetInMerged, "", syscall.MS_BIND|syscall.MS_REMOUNT|syscall.MS_RDONLY, ""); err != nil {
+				return fmt.Errorf("remount ro %s: %w", v.Target, err)
+			}
+		}
 	}
 
 	// 保证 chroot 后要用到的挂载点存在

@@ -68,6 +68,12 @@ func (*RunCli) Exec(args ...string) error {
 				return fmt.Errorf("missing value for -e")
 			}
 			opts.Envs = append(opts.Envs, args[i])
+		case "-v", "--volume":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("missing value for -v")
+			}
+			opts.Volumes = append(opts.Volumes, args[i])
 		default:
 			return fmt.Errorf("unknown flag: %s", args[i])
 		}
