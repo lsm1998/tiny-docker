@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"tinydocker/pkg/image"
+
+	"golang.org/x/sys/unix"
 )
 
 // FindContainerDir 查询容器配置
@@ -125,4 +127,36 @@ func isAlive(cfg Config) bool {
 	}
 	_, err := os.Stat(fmt.Sprintf("/proc/%d", cfg.Pid))
 	return err == nil
+}
+
+// lockContainerDir 对容器目录加排他锁，保护并发读写 config.json。
+func lockContainerDir(dir string) (*os.File, error) {
+	lockPath := filepath.Join(dir, "config.lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open lock %s: %w", lockPath, err)
+	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("flock %s: %w", lockPath, err)
+	}
+	return f, nil
+}
+
+// unlockContainerDir 释放容器目录锁。
+func unlockContainerDir(f *os.File) {
+	if f != nil {
+		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		f.Close()
+	}
+}
+
+// withContainerLocked 持锁期间读写容器 config。
+func withContainerLocked(dir string, fn func() error) error {
+	lock, err := lockContainerDir(dir)
+	if err != nil {
+		return err
+	}
+	defer unlockContainerDir(lock)
+	return fn()
 }
